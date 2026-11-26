@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Module</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 左侧导航 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">
+          <img src="icon.png" width="40" height="40" alt="Module" />
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">Module</div>
+          <div class="brand-sub">任务管理器 <span id="appVersion" style="opacity:0.7"></span></div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="hierarchy" title="层级视图">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+          <span>层级视图</span>
+        </button>
+        <button class="nav-item" data-view="deadline" title="截止日期">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+          <span>截止日期</span>
+        </button>
+        <button class="nav-item" data-view="gantt" title="甘特图">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M4 12h16M4 18h7"/></svg></span>
+          <span>甘特图</span>
+        </button>
+        <button class="nav-item" data-view="completed" title="已完成">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></span>
+          <span>已完成</span>
+          <span class="badge" id="completedCount">0</span>
+        </button>
+        <button class="nav-item" data-view="reports" title="周报">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span>
+          <span>周报</span>
+        </button>
+        <button class="nav-item" data-view="notes" title="备忘录">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
+          <span>备忘录</span>
+        </button>
+      </nav>
+      <div class="sidebar-stats" id="sidebarStats">
+        <div class="stat-item">
+          <span class="stat-num" id="statActive">0</span>
+          <span class="stat-label">进行中</span>
+        </div>
+        <div class="stat-item near clickable" id="statNearItem" title="查看今天与明天到期" role="button" tabindex="0">
+          <span class="stat-num" id="statNear">0</span>
+          <span class="stat-label">近两日</span>
+        </div>
+        <div class="stat-item overdue clickable" id="statOverdueItem" title="查看已延期任务" role="button" tabindex="0">
+          <span class="stat-num" id="statOverdue">0</span>
+          <span class="stat-label">已延期</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num" id="statDone">0</span>
+          <span class="stat-label">今日完成</span>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="sidebar-version" id="sidebarVersionHint">Module</div>
+      </div>
+    </aside>
+
+    <!-- 主区域 -->
+    <main class="main">
+      <!-- 顶部工具栏 -->
+      <header class="toolbar">
+        <div class="toolbar-center" style="flex:1;max-width:none;">
+          <div class="search-box" style="max-width:none;width:100%;">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="搜索任务内容、备注..." autocomplete="off" style="width:100%;" />
+            <button class="search-clear" id="searchClear" hidden>×</button>
+          </div>
+          <span class="search-result" id="searchResult" hidden></span>
+        </div>
+        <div class="toolbar-right">
+          <button class="btn-icon" id="undoBtn" title="撤回 (Ctrl+Z)" disabled>
+            ↶ 撤回 <span id="undoHint" style="opacity:0.7;font-size:11px;margin-left:2px;"></span>
+          </button>
+          <button class="btn-icon" id="autoPlanBtn" title="跟随子任务排期：开启后母任务日期随子任务边界自动调整">跟随排期</button>
+          <label class="project-scope-label" title="只看某一个顶层主任务（项目）">
+            <span class="sr-only">项目</span>
+            <select id="projectScopeSelect" class="project-scope-select" aria-label="项目过滤">
+              <option value="">全部项目</option>
+            </select>
+          </label>
+          <div class="toolbar-more">
+            <button class="btn-icon" id="moreMenuBtn" title="更多" type="button" aria-haspopup="true">⋯</button>
+            <div class="toolbar-more-menu" id="moreMenu" hidden>
+              <button type="button" class="toolbar-more-item" id="themeToggleBtn" title="切换主题">🌙 深色</button>
+              <button type="button" class="toolbar-more-item" id="widgetToggleBtn" title="桌面组件">桌面组件</button>
+              <button type="button" class="toolbar-more-item" id="dataMenuBtn" title="数据管理">数据备份</button>
+              <button type="button" class="toolbar-more-item" id="cleanupBtn" title="清理过期已完成任务">清理旧数据</button>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="addTaskBtn" title="聚焦底栏快速添加">+ 添加</button>
+        </div>
+      </header>
+
+      <!-- 视图头部 -->
+      <div class="view-header">
+        <h2 class="view-title" id="viewTitle">层级视图</h2>
+        <p class="view-hint" id="viewHint">拖拽调整顺序；按住任务可拖到另一个任务上方（同级）或下方（变子任务）</p>
+      </div>
+
+      <!-- 批量操作栏(多选时显示) -->
+      <div class="batch-bar" id="batchBar" hidden>
+        <span class="batch-count">已选 0 项</span>
+        <button class="btn btn-ghost" data-batch-action="priority-p0">🔴 P0</button>
+        <button class="btn btn-ghost" data-batch-action="priority-p1">🟠 P1</button>
+        <button class="btn btn-ghost" data-batch-action="priority-p2">🟡 P2</button>
+        <button class="btn btn-ghost" data-batch-action="priority-clear">清除优先级</button>
+        <button class="btn btn-ghost" data-batch-action="complete">✓ 完成</button>
+        <button class="btn btn-ghost danger" data-batch-action="delete">🗑 删除</button>
+        <button class="btn btn-ghost" data-batch-action="clear">取消选择</button>
+      </div>
+
+      <!-- 视图容器 -->
+      <div class="view-container" id="viewContainer" tabindex="-1">
+        <!-- 视图由 JS 动态渲染；tabindex 供键盘导航聚焦 -->
+      </div>
+
+      <!-- 底部快速输入栏 -->
+      <div class="quick-input">
+        <div class="quick-input-row">
+          <span class="quick-input-hint" id="quickInputHint">回车新建一级任务</span>
+          <input type="text" id="quickInput" placeholder="输入任务内容，回车创建..." autocomplete="off" />
+          <button class="quick-input-date" id="quickInputStartBtn" title="开始时间（可选）" type="button">🚀 开始</button>
+          <button class="quick-input-date" id="quickInputDateBtn" title="截止日期（可选）" type="button">📅 截止</button>
+          <button class="quick-input-toggle" id="quickInputNotesBtn" title="添加备注（可选）" type="button">📝</button>
+          <button class="quick-input-clear" id="quickInputClear" title="取消选中 (Esc)" hidden>×</button>
+        </div>
+        <textarea id="quickInputNotes" class="quick-input-notes" placeholder="备注（可选）" rows="2" hidden></textarea>
+      </div>
+    </main>
+  </div>
+
+  <!-- 日期选择弹窗(自包含月历,不依赖系统原生 picker) -->
+  <div class="modal" id="datePickerModal" tabindex="-1" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h2 id="datePickerTitle">选择日期</h2>
+        <button class="btn-close" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-hint" id="datePickerHint" style="margin-bottom:12px;">不选表示不设置该日期</div>
+        <div class="dp-wrap">
+          <div class="dp-header">
+            <button type="button" class="dp-nav" id="dpPrevYear" title="上一年">«</button>
+            <button type="button" class="dp-nav" id="dpPrevMonth" title="上个月">‹</button>
+            <div class="dp-title" id="dpTitle">2026 年 7 月</div>
+            <button type="button" class="dp-nav" id="dpNextMonth" title="下个月">›</button>
+            <button type="button" class="dp-nav" id="dpNextYear" title="下一年">»</button>
+          </div>
+          <div class="dp-weekdays">
+            <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          </div>
+          <div class="dp-grid" id="dpGrid"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="datePickerClear">清除</button>
+        <button class="btn" data-close>取消</button>
+        <button class="btn btn-primary" id="datePickerConfirm">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 任务编辑模态框 -->
+  <div class="modal" id="taskModal" tabindex="-1" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modalTitle">新建任务</h2>
+        <button class="btn-close" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span class="field-label">任务内容 *</span>
+          <input type="text" id="taskContent" placeholder="请输入任务内容..." />
+        </label>
+        <label class="field">
+          <span class="field-label">开始时间</span>
+          <div class="field-date-row">
+            <input type="text" id="taskStartDate" class="modal-date-input" placeholder="YYYY-MM-DD" inputmode="numeric" autocomplete="off" maxlength="10" />
+            <button type="button" class="modal-date-btn" id="taskStartDateBtn" data-target="modalStart" title="打开日历">📅</button>
+          </div>
+        </label>
+        <label class="field">
+          <span class="field-label">截止日期</span>
+          <div class="field-date-row">
+            <input type="text" id="taskDeadline" class="modal-date-input" placeholder="YYYY-MM-DD" inputmode="numeric" autocomplete="off" maxlength="10" />
+            <button type="button" class="modal-date-btn" id="taskDeadlineBtn" data-target="modalDeadline" title="打开日历">📅</button>
+          </div>
+        </label>
+        <div class="field-row">
+          <label class="field field-half">
+            <span class="field-label">优先级</span>
+            <select id="taskPriority">
+              <option value="">无</option>
+              <option value="p0">🔴 P0 紧急</option>
+              <option value="p1">🟠 P1 重要</option>
+              <option value="p2">🟡 P2 普通</option>
+            </select>
+          </label>
+          <label class="field field-half">
+            <span class="field-label">状态</span>
+            <select id="taskStatus">
+              <option value="">无</option>
+              <option value="todo">📋 待办</option>
+              <option value="progress">🔄 进行中</option>
+              <option value="blocked">🚫 阻塞</option>
+              <option value="review">👁 审核中</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          <span class="field-label">备注</span>
+          <textarea id="taskNotes" rows="4" placeholder="备注内容..."></textarea>
+        </label>
+        <div class="field-hint" id="parentHint" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" data-close>取消</button>
+        <button class="btn btn-primary" id="saveTaskBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 数据管理弹窗(纯导入/导出,偏好设置已搬到托盘设置窗口) -->
+  <div class="modal" id="dataModal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>📦 数据备份与恢复</h2>
+        <button class="btn-close" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--fg-muted);font-size:13px;margin:0 0 16px 0;">
+          备份或恢复你的所有任务和周报。建议每周导出一次作为备份。
+        </p>
+        <div class="data-action-row" style="padding-top:0;">
+          <button class="btn" id="exportJsonBtn">📤 导出为 JSON</button>
+          <span class="data-hint" id="exportHint">保存到下载文件夹</span>
+        </div>
+        <div class="data-action-row">
+          <button class="btn" id="importJsonBtn">📥 从 JSON 导入</button>
+          <span class="data-hint">选择文件,会询问是否覆盖现有数据</span>
+        </div>
+        <div class="backup-section">
+          <div class="backup-section-header">
+            <span class="backup-section-title">🕒 自动备份历史</span>
+            <button type="button" class="btn btn-ghost btn-sm" id="refreshBackupsBtn">刷新</button>
+          </div>
+          <p class="data-hint" style="margin-bottom:8px;">每日首改前（最多10份）及覆盖/恢复前（最多5份）自动保存旧数据快照。</p>
+          <div class="backup-list" id="backupList">
+            <div class="data-hint">暂无自动备份</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" data-close>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 备注查看模态框 -->
+  <div class="modal" id="notesModal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h2 id="notesTitle">备注</h2>
+        <button class="btn-close" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="notes-content" id="notesContent"></div>
+        <div class="notes-deadline" id="notesDeadline"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右键菜单 -->
+  <div class="context-menu" id="contextMenu" hidden>
+    <div class="context-menu-item" data-action="edit">✎ 编辑</div>
+    <div class="context-menu-item" data-action="complete">✓ 完成</div>
+    <div class="context-menu-item" data-action="addChild">＋ 添加子任务</div>
+    <div class="context-menu-sep"></div>
+    <div class="context-menu-item has-submenu">优先级<span class="context-sub-arrow">▸</span>
+      <div class="context-submenu">
+        <div class="context-menu-item" data-action="setPriority" data-value="p0">🔴 P0</div>
+        <div class="context-menu-item" data-action="setPriority" data-value="p1">🟠 P1</div>
+        <div class="context-menu-item" data-action="setPriority" data-value="p2">🟡 P2</div>
+        <div class="context-menu-item" data-action="setPriority" data-value="">✕ 清除</div>
+      </div>
+    </div>
+    <div class="context-menu-item has-submenu">状态<span class="context-sub-arrow">▸</span>
+      <div class="context-submenu">
+        <div class="context-menu-item" data-action="setStatus" data-value="todo">📋 待办</div>
+        <div class="context-menu-item" data-action="setStatus" data-value="progress">🔄 进行中</div>
+        <div class="context-menu-item" data-action="setStatus" data-value="blocked">🚫 阻塞</div>
+        <div class="context-menu-item" data-action="setStatus" data-value="review">👁 审核中</div>
+      </div>
+    </div>
+    <div class="context-menu-sep"></div>
+    <div class="context-menu-item danger" data-action="delete">🗑 删除</div>
+  </div>
+
+  <!-- 自定义确认弹窗(单确定按钮 + 右上X关闭,Enter=确定,Esc=取消) -->
+  <div class="modal" id="confirmModal" hidden>
+    <div class="modal-card modal-card-sm confirm-card">
+      <button class="confirm-close" id="confirmClose" type="button" aria-label="关闭" title="取消">✕</button>
+      <div class="modal-body">
+        <h2 class="confirm-title" id="confirmTitle">请确认</h2>
+        <p class="confirm-message" id="confirmMessage"></p>
+      </div>
+      <div class="modal-footer confirm-footer" id="confirmFooter">
+        <button class="btn btn-primary" id="confirmOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 通知 -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="api-bridge.js"></script>
+  <script src="html2canvas.min.js"></script>
+  <script src="morphdom-umd.min.js"></script>
+
+  <!-- Phase 1 基础运行环境 -->
+  <script src="utils.js"></script>
+  <script src="shared/deadline-buckets.js"></script>
+  <script src="shared/task-sort.js"></script>
+  <script src="shared/project-scope.js"></script>
+  <script src="constants.js"></script>
+  <script src="state.js"></script>
+
+  <!-- Phase 2 原子级公共组件 -->
+  <script src="components/toast.js"></script>
+  <script src="components/modal.js"></script>
+  <script src="components/task-item.js"></script>
+  <script src="components/context-menu.js"></script>
+  <script src="components/date-picker.js"></script>
+  <script src="components/batch-bar.js"></script>
+
+  <!-- Phase 3 独立视图引擎 -->
+  <script src="views/notes.js"></script>
+  <script src="views/hierarchy.js"></script>
+  <script src="views/deadline.js"></script>
+  <script src="views/gantt.js"></script>
+  <script src="views/completed.js"></script>
+  <script src="views/reports.js"></script>
+
+  <!-- Phase 4 核心业务域控制器 -->
+  <script src="controllers/task-controller.js"></script>
+  <script src="controllers/drag-controller.js"></script>
+  <script src="controllers/search-controller.js"></script>
+  <script src="controllers/keyboard-controller.js"></script>
+
+  <!-- Phase 5 路由与启动中枢 -->
+  <script src="app.js"></script>
+</body>
+</html>

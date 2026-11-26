@@ -1,0 +1,1964 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Module 组件</title>
+  <script src="api-bridge.js"></script>
+  <script src="utils.js"></script>
+  <script src="shared/task-sort.js"></script>
+  <script src="shared/project-scope.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1d21;
+      color: #e2e8f0;
+      font-family: -apple-system, "Microsoft YaHei", "Segoe UI", sans-serif;
+      font-size: 13px;
+      overflow: hidden;
+      user-select: none;
+      /* -webkit-app-region: drag; [第二刀] 已迁移到 OS 层 hookWindowMessage，恢复 Snap Layouts */
+    }
+    /* 跟随主窗主题（默认暗色；theme-light 为浅色） */
+    body.theme-light {
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    body.theme-light .widget-header {
+      background: rgba(99, 102, 241, 0.1);
+      border-bottom-color: rgba(99, 102, 241, 0.25);
+    }
+    body.theme-light .widget-title { color: #4338ca; }
+    body.theme-light .widget-btn {
+      background: rgba(15, 23, 42, 0.06);
+      color: #64748b;
+    }
+    body.theme-light .widget-btn:hover { background: rgba(15, 23, 42, 0.1); color: #0f172a; }
+    body.theme-light .tab-bar { border-bottom-color: rgba(15, 23, 42, 0.08); }
+    body.theme-light .tab { color: #64748b; }
+    body.theme-light .tab.active { color: #4338ca; border-bottom-color: #6366f1; }
+    body.theme-light .widget-body { background: #f8fafc; }
+    body.theme-light .widget-body::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.15); }
+    body.theme-light .section-label { color: #64748b; }
+    body.theme-light .task-item {
+      background: #fff;
+      border-color: #e2e8f0;
+      color: #0f172a;
+    }
+    body.theme-light .task-item:hover { background: #f1f5f9; }
+    body.theme-light .task-text { color: #0f172a; }
+    body.theme-light .task-meta { color: #64748b; }
+    body.theme-light .task-meta.overdue { color: #dc2626; }
+    body.theme-light .task-meta.today { color: #d97706; }
+    body.theme-light .task-check { border-color: #94a3b8; }
+    body.theme-light .widget-priority.p0 { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+    body.theme-light .widget-priority.p1 { background: rgba(249, 115, 22, 0.12); color: #c2410c; }
+    body.theme-light .widget-priority.p2 { background: rgba(245, 158, 11, 0.15); color: #a16207; }
+    /* 快捷编辑条：浅色下必须跟卡片一致，禁止残留暗色底 */
+    body.theme-light .task-actions {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+    }
+    body.theme-light .task-actions input,
+    body.theme-light .task-actions textarea {
+      background: #fff;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+    body.theme-light .task-actions input:focus,
+    body.theme-light .task-actions textarea:focus {
+      border-color: #6366f1;
+    }
+    body.theme-light .task-actions label { color: #64748b; }
+    body.theme-light .task-actions .btn-cancel {
+      background: #e2e8f0;
+      color: #475569;
+    }
+    body.theme-light .task-actions .btn-cancel:hover { background: #cbd5e1; color: #0f172a; }
+    body.theme-light .parent-tooltip {
+      background: #fff;
+      border-color: #c7d2fe;
+      color: #312e81;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    }
+    body.theme-light .parent-tooltip .chain-text { color: #0f172a; }
+    body.theme-light .parent-tooltip .chain-label,
+    body.theme-light .parent-tooltip .chain-arrow { color: #64748b; }
+    body.theme-light .quick-add {
+      background: #fff;
+      border-top-color: #e2e8f0;
+    }
+    body.theme-light .quick-add input {
+      background: #f1f5f9;
+      color: #0f172a;
+      border-color: #e2e8f0;
+    }
+    body.theme-light .quick-add input::placeholder { color: #94a3b8; }
+    body.theme-light .empty-hint { color: #94a3b8; }
+    body.theme-light .note-item {
+      background: #fff;
+      color: #0f172a;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    body.theme-light .note-item:hover { background: #f8fafc; }
+    body.theme-light .note-text { color: #334155; }
+    body.theme-light .note-text.editing {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+    body.theme-light .note-time { color: #94a3b8; }
+    body.theme-light .note-action { color: #64748b; }
+    body.theme-light .note-action:hover { color: #4338ca; }
+    body.theme-light .note-drag-handle { color: #94a3b8; }
+    body.theme-light .color-dot:hover { border-color: rgba(15, 23, 42, 0.25); }
+    .widget {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ==================== Header ==================== */
+    .widget-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(99, 102, 241, 0.15);
+      border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+      cursor: grab;
+      -webkit-app-region: drag;
+    }
+    .widget-header:active { cursor: grabbing; }
+    .widget-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #a5b4fc;
+      letter-spacing: 0.5px;
+    }
+    .widget-controls {
+      display: flex;
+      gap: 6px;
+      -webkit-app-region: no-drag;
+    }
+    /* 图钉置顶按钮样式 */
+    #pinWindowBtn { transition: all 0.2s; }
+    #pinWindowBtn.active { color: #f59e0b; }
+    #pinWindowBtn:not(.active) { color: #64748b; transform: rotate(-45deg); }
+    #pinWindowBtn:hover { background: rgba(245,158,11,0.2); }
+    .widget-btn {
+      width: 22px;
+      height: 22px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+      color: #94a3b8;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .widget-btn:hover { background: rgba(255,255,255,0.15); color: #e2e8f0; }
+    .widget-btn.close-btn:hover { background: rgba(239,68,68,0.3); color: #fca5a5; }
+    .widget-btn.main-btn:hover { background: rgba(99,102,241,0.3); color: #a5b4fc; }
+
+    /* ==================== Tabs ==================== */
+    .tab-bar {
+      display: flex;
+      -webkit-app-region: no-drag;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .tab {
+      flex: 1;
+      padding: 8px 0;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.15s;
+      border-bottom: 2px solid transparent;
+    }
+    .tab:hover { color: #94a3b8; }
+    .tab.active {
+      color: #a5b4fc;
+      border-bottom-color: #6366f1;
+    }
+
+    /* ==================== Body ==================== */
+    .widget-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      -webkit-app-region: no-drag;
+    }
+    .widget-body::-webkit-scrollbar { width: 4px; }
+    .widget-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin: 8px 0 6px;
+      font-weight: 600;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    .empty-hint {
+      text-align: center;
+      padding: 20px 0;
+      color: #475569;
+      font-size: 12px;
+    }
+
+    /* ==================== Task Items ==================== */
+
+    /* 优先级徽章 (小组件专用) */
+    .widget-priority {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 600;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .widget-priority.p0 { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+    .widget-priority.p1 { background: rgba(249, 115, 22, 0.15); color: #fdba74; }
+    .widget-priority.p2 { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 8px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      transition: background 0.15s;
+      cursor: pointer;
+    }
+    .task-item:hover { background: rgba(255,255,255,0.05); }
+    .task-item.completed { opacity: 0.4; }
+    .task-item.completed .task-text { text-decoration: line-through; }
+
+    .task-check {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 1.5px solid #475569;
+      flex-shrink: 0;
+      margin-top: 2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .task-check:hover { border-color: #6366f1; }
+    .task-check.checked {
+      background: #6366f1;
+      border-color: #6366f1;
+    }
+    .task-check.checked::after {
+      content: '✓';
+      font-size: 10px;
+      color: #fff;
+    }
+
+    .task-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+      /* 颜色由内联 style 动态设置（按任务层级） */
+    }
+
+    .task-info { flex: 1; min-width: 0; }
+    .task-text {
+      font-size: 12px;
+      line-height: 1.4;
+      color: #e2e8f0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .task-meta {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+    .task-meta.overdue { color: #fca5a5; }
+    .task-meta.today { color: #fbbf24; }
+
+    /* Parent chain tooltip - shows on hover after 2s */
+    .parent-tooltip {
+      position: fixed;
+      z-index: 9999;
+      pointer-events: none;
+      background: #1e2130;
+      border: 1px solid rgba(99, 102, 241, 0.5);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #c7d2fe;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      max-width: 320px;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .parent-tooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .parent-tooltip .chain-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+    }
+    .parent-tooltip .chain-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .parent-tooltip .chain-arrow {
+      color: #64748b;
+      font-size: 10px;
+      margin: 0 4px;
+    }
+    .parent-tooltip .chain-text {
+      color: #e2e8f0;
+    }
+    .parent-tooltip .chain-label {
+      font-size: 10px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    /* Task quick edit popover */
+    .task-actions {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      background: #25282d;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      border: 1px solid rgba(99,102,241,0.2);
+    }
+    .task-actions.show { display: flex; }
+    .task-actions input, .task-actions textarea {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: #e2e8f0;
+      font-size: 11px;
+      outline: none;
+      font-family: inherit;
+      width: 100%;
+    }
+    .task-actions input:focus, .task-actions textarea:focus { border-color: rgba(99,102,241,0.5); }
+    .task-actions textarea { resize: none; height: 40px; }
+    .task-actions label {
+      font-size: 9px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .task-actions .row { display: flex; gap: 6px; align-items: center; }
+    .task-actions .row label { flex-shrink: 0; width: 40px; }
+    .task-actions .row input { flex: 1; }
+    .task-actions .btn-row { display: flex; gap: 6px; justify-content: flex-end; }
+    .task-actions .btn {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .task-actions .btn-save { background: #6366f1; color: #fff; }
+    .task-actions .btn-save:hover { background: #4f46e5; }
+    .task-actions .btn-cancel { background: rgba(255,255,255,0.08); color: #94a3b8; }
+
+    /* ==================== Note Items ==================== */
+    .note-item {
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      border-left: 3px solid #6366f1;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .note-item:hover { background: rgba(255,255,255,0.07); }
+    .note-item.pinned { border-left-color: #f59e0b; }
+    .note-item.color-yellow { border-left-color: #eab308; }
+    .note-item.color-green { border-left-color: #22c55e; }
+    .note-item.color-pink { border-left-color: #ec4899; }
+    .note-item.color-blue { border-left-color: #3b82f6; }
+    .note-item.dragging { opacity: 0.4; }
+    .note-item.drag-over { border-top: 2px solid #6366f1; }
+
+    .note-text {
+      font-size: 11px;
+      line-height: 1.5;
+      color: #cbd5e1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .note-text.editing {
+      -webkit-line-clamp: unset;
+      display: block;
+      outline: none;
+      background: rgba(255,255,255,0.06);
+      border-radius: 4px;
+      padding: 4px 6px;
+      min-height: 40px;
+      /* Bug-E 修复：彻底禁用富文本输入，防止复制粘贴带格式的文本污染 DOM */
+      -webkit-user-modify: read-write-plaintext-only;
+    }
+    .note-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+    .note-time { font-size: 9px; color: #475569; }
+    .note-actions {
+      display: none;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+    .note-item:hover .note-actions { display: flex; }
+    .note-action {
+      font-size: 10px;
+      color: #64748b;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+    .note-action:hover { color: #a5b4fc; }
+    .note-action.danger:hover { color: #fca5a5; }
+    .note-drag-handle {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 14px;
+      height: 14px;
+      cursor: grab;
+      color: #475569;
+      font-size: 10px;
+      display: none;
+      -webkit-app-region: no-drag;
+    }
+    .note-item:hover .note-drag-handle { display: flex; align-items: center; justify-content: center; }
+    .note-drag-handle:active { cursor: grabbing; }
+
+    /* ==================== Quick Add ==================== */
+    .quick-add {
+      display: flex;
+      gap: 6px;
+      padding: 8px 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      -webkit-app-region: no-drag;
+    }
+    .quick-add input {
+      flex: 1;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 6px 10px;
+      color: #e2e8f0;
+      font-size: 12px;
+      outline: none;
+      font-family: inherit;
+    }
+    .quick-add input:focus { border-color: rgba(99,102,241,0.5); }
+    .quick-add input::placeholder { color: #475569; }
+    .quick-add button {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0 12px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .quick-add button:hover { background: #4f46e5; }
+
+    /* Note color picker */
+    .note-color-picker {
+      display: none;
+      gap: 4px;
+      padding: 6px 0;
+    }
+    .note-color-picker.show { display: flex; }
+    .color-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: border-color 0.15s;
+    }
+    .color-dot:hover { border-color: rgba(255,255,255,0.3); }
+    .color-dot.default { background: #6366f1; }
+    .color-dot.yellow { background: #eab308; }
+    .color-dot.green { background: #22c55e; }
+    .color-dot.pink { background: #ec4899; }
+    .color-dot.blue { background: #3b82f6; }
+
+    /* ==================== Widget 自包含 Toast ==================== */
+    .toast-container {
+      position: fixed;
+      bottom: 48px; /* 避开底部快速添加栏 */
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 90%;
+      pointer-events: none;
+    }
+    .widget-toast {
+      background: #ef4444; /* 默认错误红色 */
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      animation: widgetSlideUp 0.15s ease-out;
+      pointer-events: auto;
+    }
+    .widget-toast.warning { background: #f59e0b; color: #1a1d21; }
+    .widget-toast.success { background: #10b981; }
+    @keyframes widgetSlideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .rescue-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(245, 158, 11, 0.16);
+      border-top: 1px solid rgba(245, 158, 11, 0.4);
+      font-size: 11px;
+      color: #fde68a;
+      -webkit-app-region: no-drag;
+    }
+    .rescue-bar[hidden] { display: none !important; }
+    body.theme-light .rescue-bar {
+      background: #fef3c7;
+      color: #92400e;
+      border-top-color: #f59e0b;
+    }
+    .rescue-bar-text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rescue-bar-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .rescue-btn {
+      border: none;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 10px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.15);
+      color: inherit;
+    }
+    body.theme-light .rescue-btn { background: rgba(146, 64, 14, 0.12); }
+    .rescue-btn:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <div class="widget">
+    <!-- Header -->
+    <div class="widget-header" data-tauri-drag-region>
+      <span class="widget-title" data-tauri-drag-region>📋 Module</span>
+      <div class="widget-controls">
+        <button class="widget-btn active" id="pinWindowBtn" title="取消置顶">📌</button>
+        <button class="widget-btn main-btn" id="focusMainBtn" title="切回主窗口">⤢</button>
+        <button class="widget-btn" id="undoBtn" title="撤回上一步">↶</button>
+        <button class="widget-btn close-btn" id="closeBtn" title="关闭">✕</button>
+      </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+      <div class="tab active" id="tabTasks">📋 任务</div>
+      <div class="tab" id="tabNotes">📝 便签</div>
+    </div>
+
+    <!-- Body -->
+    <div class="parent-tooltip" id="parentTooltip"></div>
+    <div class="widget-body" id="widgetBody">
+      <div class="empty-hint">加载中...</div>
+    </div>
+
+    <!-- Toast 通知容器 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 草稿抢救恢复栏（不触碰 quickInput 已有输入） -->
+    <div class="rescue-bar" id="rescueDraftBar" hidden>
+      <span class="rescue-bar-text" id="rescueDraftText"></span>
+      <div class="rescue-bar-actions">
+        <button type="button" class="rescue-btn" id="rescueCopyBtn">复制</button>
+        <button type="button" class="rescue-btn" id="rescueRestoreBtn">恢复</button>
+        <button type="button" class="rescue-btn" id="rescueDismissBtn" title="丢弃暂存">✕</button>
+      </div>
+    </div>
+
+    <!-- Quick Add -->
+    <div class="quick-add" id="quickAddBar">
+      <input type="text" id="quickInput" placeholder="快速添加任务..." />
+      <button id="addBtn">+</button>
+    </div>
+  </div>
+
+  <script>
+    const _api = window.api;
+    let currentTab = 'tasks';
+
+    // ==================== Widget 自包含 Toast ====================
+    window.ModuleApp = window.ModuleApp || {};
+    window.ModuleApp.Toast = {
+      show(msg, typeOrIsError) {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+
+        const el = document.createElement('div');
+
+        // 兼容小组件中多元化的传参格式：Toast.show('msg', true), Toast.show('msg', 'warning')
+        let type = 'error';
+        if (typeOrIsError === 'success' || typeOrIsError === 'warning') {
+          type = typeOrIsError;
+        } else if (typeOrIsError === true) {
+          type = 'error';
+        } else if (typeOrIsError === false) {
+          type = 'success';
+        }
+
+        el.className = `widget-toast ${type}`;
+        el.textContent = msg;
+        container.appendChild(el);
+
+        // 2.5 秒后自动移除
+        setTimeout(() => {
+          el.remove();
+        }, 2500);
+      }
+    };
+
+    // 启动时向后端询问记忆的置顶状态,对齐图钉按钮的 UI
+    _api.widget.getPinned().then(isPinned => {
+      const pinBtn = document.getElementById('pinWindowBtn');
+      if (pinBtn) {
+        pinBtn.classList.toggle('active', isPinned);
+        pinBtn.title = isPinned ? '取消置顶' : '置顶窗口';
+      }
+    }).catch(() => {});
+
+    // Bug-小组件时区陷阱修复:直接 new Date('YYYY-MM-DD') 会被解析为 UTC 0 点,
+    // 在东半球(UTC+8)会变成前一天 19:00,导致日期对不上主窗口
+    function parseLocalDate(iso) {
+      if (!iso) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+        const [y, m, d] = iso.split('-').map(Number);
+        return new Date(y, m - 1, d);
+      }
+      return new Date(iso);
+    }
+
+    let editingTaskId = null;   // 当前展开快捷编辑的任务 ID
+    let editingTaskOriginal = null; // 展开时任务原始字段，用于判断是否有未保存修改
+    let editingTaskDraft = null;    // 正在编辑的任务草稿
+    let _allTasks = [];           // 全部任务缓存，供 tooltip 使用
+    let _hoverTimer = null;      // tooltip 延迟定时器
+    let _hoverTarget = null;     // 当前悬停的任务 item
+    let editingNoteId = null;   // 当前编辑中的便签 ID
+    let editingNoteDraft = null; // 当前便签编辑草稿
+    let _pendingNoteSave = null; // 串行化便签保存 Promise
+    let _pendingTaskSave = null; // 串行化任务保存 Promise
+    let _refreshSeq = 0;         // 异步刷新序号，丢弃乱序旧响应
+    let widgetProjectScopeIds = []; // 固定 []：全局分拣（UI 已隐藏项目下拉）
+
+    const RESCUE_STORAGE_KEY = 'module_widget_rescue_drafts_v1';
+    let _rescueDraftFallback = {};
+    function _loadRescueMap() {
+      try {
+        const raw = window.sessionStorage?.getItem(RESCUE_STORAGE_KEY);
+        return raw ? (JSON.parse(raw) || {}) : {};
+      } catch (_) {
+        return { ..._rescueDraftFallback };
+      }
+    }
+    function _saveRescueMap(map) {
+      _rescueDraftFallback = { ...map };
+      try {
+        window.sessionStorage?.setItem(RESCUE_STORAGE_KEY, JSON.stringify(map));
+      } catch (_) {}
+    }
+    function saveRescueDraft(entry) {
+      if (!entry || !entry.id || !entry.type) return;
+      const map = _loadRescueMap();
+      map[`${entry.type}:${entry.id}`] = { ...entry, savedAt: Date.now() };
+      _saveRescueMap(map);
+      renderRescueBar();
+    }
+    function removeRescueDraft(type, id) {
+      const map = _loadRescueMap();
+      delete map[`${type}:${id}`];
+      _saveRescueMap(map);
+      renderRescueBar();
+    }
+    function _latestRescueDraft() {
+      const entries = Object.values(_loadRescueMap());
+      if (entries.length === 0) return null;
+      entries.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+      return { latest: entries[0], count: entries.length };
+    }
+    function renderRescueBar() {
+      const bar = document.getElementById('rescueDraftBar');
+      const txt = document.getElementById('rescueDraftText');
+      const restoreBtn = document.getElementById('rescueRestoreBtn');
+      if (!bar || !txt) return;
+      const info = _latestRescueDraft();
+      if (!info) {
+        bar.hidden = true;
+        return;
+      }
+      const { latest, count } = info;
+      const kindLabel = latest.type === 'note' ? '便签草稿' : `任务「${latest.title || ''}」草稿`;
+      txt.textContent = `已暂存${kindLabel}${count > 1 ? `（共${count}条）` : ''}`;
+      if (restoreBtn) {
+        restoreBtn.textContent = latest.type === 'note' ? '恢复为新便签' : '恢复';
+        restoreBtn.style.display = latest.type === 'note' ? '' : 'none';
+      }
+      bar.hidden = false;
+    }
+    function _rescuePlainText(d) {
+      if (!d) return '';
+      if (d.type === 'note') return d.content || '';
+      const parts = [];
+      if (d.startDate) parts.push(`开始: ${d.startDate}`);
+      if (d.deadline) parts.push(`截止: ${d.deadline}`);
+      if (d.notes) parts.push(d.notes);
+      return parts.join('\n');
+    }
+    document.getElementById('rescueCopyBtn')?.addEventListener('click', async () => {
+      const info = _latestRescueDraft();
+      if (!info) return;
+      const text = _rescuePlainText(info.latest);
+      try {
+        if (_api.writeClipboard) await _api.writeClipboard(text);
+        else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+        window.ModuleApp.Toast.show('已复制暂存草稿', 'success');
+      } catch (e) {
+        window.ModuleApp.Toast.show('复制失败: ' + (e?.message || e), true);
+      }
+    });
+    document.getElementById('rescueRestoreBtn')?.addEventListener('click', async () => {
+      const info = _latestRescueDraft();
+      if (!info || info.latest.type !== 'note') return;
+      const d = info.latest;
+      if (!(d.content || '').trim()) {
+        removeRescueDraft(d.type, d.id);
+        return;
+      }
+      try {
+        await _api.notes.create({ content: d.content });
+        removeRescueDraft(d.type, d.id);
+        window.ModuleApp.Toast.show('已恢复为新便签', 'success');
+        if (currentTab === 'notes') refresh();
+      } catch (e) {
+        window.ModuleApp.Toast.show('恢复失败: ' + (e?.message || e), true);
+      }
+    });
+    document.getElementById('rescueDismissBtn')?.addEventListener('click', () => {
+      const info = _latestRescueDraft();
+      if (!info) return;
+      removeRescueDraft(info.latest.type, info.latest.id);
+    });
+
+    // mouseX/mouseY 与 mousemove 监听器必须在全局作用域声明并只绑定一次
+    // 之前放在 bindTaskEvents 内部,每次刷新都会创建新函数实例并 addEventListener 一次
+    // 导致小组件用得越久,document 上的 mousemove 监听器越多,鼠标移动就越来越卡
+    let mouseX = 0, mouseY = 0;
+    const _mouseMoveHandler = function(e) { mouseX = e.clientX; mouseY = e.clientY; };
+    document.addEventListener('mousemove', _mouseMoveHandler);
+
+    // ==================== Tab Switching ====================
+    document.getElementById('tabTasks').addEventListener('click', () => switchTab('tasks'));
+    document.getElementById('tabNotes').addEventListener('click', () => switchTab('notes'));
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.getElementById('tabTasks').classList.toggle('active', tab === 'tasks');
+      document.getElementById('tabNotes').classList.toggle('active', tab === 'notes');
+      const input = document.getElementById('quickInput');
+      const btn = document.getElementById('addBtn');
+      if (tab === 'tasks') {
+        input.placeholder = '快速添加任务...';
+        btn.textContent = '+';
+      } else {
+        input.placeholder = '快速添加便签...';
+        btn.textContent = '+';
+      }
+      input.value = '';
+      refresh();
+    }
+
+    // ==================== Header Buttons ====================
+    document.getElementById('pinWindowBtn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const isPinned = !btn.classList.contains('active');
+      btn.classList.toggle('active', isPinned);
+      btn.title = isPinned ? '取消置顶' : '置顶窗口';
+      await _api.widget.setAlwaysOnTop(isPinned);
+    });
+    document.getElementById('closeBtn').addEventListener('click', async () => {
+      await _api.widget.toggle();
+    });
+    document.getElementById('undoBtn').addEventListener('click', async () => {
+      const result = await _api.undo.undo();
+      if (result.ok) {
+        // 短暂闪烁反馈
+        const btn = document.getElementById('undoBtn');
+        btn.style.background = 'rgba(99,102,241,0.4)';
+        btn.style.color = '#a5b4fc';
+        setTimeout(() => {
+          btn.style.background = '';
+          btn.style.color = '';
+        }, 600);
+        refresh();
+      }
+    });
+    document.getElementById('focusMainBtn').addEventListener('click', async () => {
+      await _api.widget.focusMain();
+    });
+
+    // ==================== 主窗口数据变更同步刷新（Delta Sync）====================
+    // data = { source: 'main', patch: { action, id, ids, payload } | null }
+    _api.onDataChange((data) => {
+      const patch = data && data.patch;
+      if (!patch) {
+        // 全量：reorder / import / undo / cleanup / config 变更
+        refresh(); return;
+      }
+      // 增量：对 widget 本地状态做精准 patch，不走全量 reload
+      switch (patch.action) {
+        case 'TASK_COMPLETED': {
+          const t = _allTasks.find(t => t.id === patch.id);
+          if (t) t.completed = true;
+          refresh();
+          return;
+        }
+        case 'TASK_UNCOMPLETED': {
+          const t = _allTasks.find(t => t.id === patch.id);
+          if (t) {
+            if (patch.payload && typeof patch.payload === 'object') Object.assign(t, patch.payload);
+            t.completed = false;
+            t.completedAt = null;
+          }
+          refresh();
+          return;
+        }
+        case 'TASK_UPDATED': {
+          const t = _allTasks.find(t => t.id === patch.id);
+          if (t && patch.payload) Object.assign(t, patch.payload);
+          refresh();
+          return;
+        }
+        case 'TASK_CREATED': {
+          // 新建任务直接全量刷新（widget 需要完整层级/DAG 信息）
+          refresh(); return;
+        }
+        case 'TASK_DELETED':
+        case 'TASKS_BATCH_COMPLETED':
+        case 'TASKS_BATCH_UNCOMPLETED':
+        case 'TASKS_BATCH_PRIORITY':
+        case 'TASKS_BATCH_DELETED':
+        case 'TASKS_CLEANED': {
+          // taskList 不存在于此 widget：只缓存 _allTasks 用于 tooltip
+          // 主任务列表用 _allTasks 同步（其它视图通过 _api 拉取；widget 主区由 refresh() 重绘）
+          const ids = new Set(patch.ids || (patch.id ? [patch.id] : []));
+          if (patch.payload && Array.isArray(patch.payload.deleted)) {
+            for (const id of patch.payload.deleted) ids.add(id);
+          }
+          // 修正条件：将批量删除和过期清理统一作为物理删除处理
+          const isDeletion = ['TASK_DELETED', 'TASKS_BATCH_DELETED', 'TASKS_CLEANED'].includes(patch.action);
+          if (isDeletion) {
+            _allTasks = _allTasks.filter(t => !ids.has(t.id));
+            const promotedTasks = patch.payload && Array.isArray(patch.payload.promotedTasks)
+              ? patch.payload.promotedTasks : [];
+            for (const p of promotedTasks) {
+              const t = _allTasks.find(x => x.id === p.id);
+              if (t) Object.assign(t, p);
+            }
+          } else if (patch.action === 'TASKS_BATCH_UNCOMPLETED') {
+            const byId = new Map(
+              (patch.payload && Array.isArray(patch.payload.tasks) ? patch.payload.tasks : [])
+                .map(t => [t.id, t])
+            );
+            _allTasks.forEach(t => {
+              if (!ids.has(t.id) && !byId.has(t.id)) return;
+              const p = byId.get(t.id);
+              if (p) Object.assign(t, p);
+              t.completed = false;
+              t.completedAt = null;
+            });
+          } else {
+            _allTasks.forEach(t => {
+              if (ids.has(t.id)) {
+                if (patch.action === 'TASKS_BATCH_COMPLETED') t.completed = true;
+                else if (patch.action === 'TASKS_BATCH_PRIORITY') t.priority = patch.payload && patch.payload.priority;
+              }
+            });
+          }
+          refresh();
+          return;
+        }
+        case 'NOTE_CREATED':
+        case 'NOTE_UPDATED':
+        case 'NOTE_DELETED':
+        case 'NOTES_REORDERED':
+          if (currentTab === 'notes') refresh();
+          return;
+        case 'REPORT_CREATED':
+        case 'REPORT_DELETED':
+        case 'REPORT_UPDATED':
+        case 'CONFIG_UPDATED':
+          applyWidgetTheme(patch.payload && patch.payload.theme);
+          // Widget 固定全局，忽略 widgetProjectScopeIds 补丁
+          refresh(); return;
+        case 'DATA_UNDO':
+        case 'DATA_IMPORTED':
+        case 'EXTERNAL_DATA_CHANGED':
+          _api.config.get().then(config => {
+            applyWidgetTheme(config.theme);
+            return refresh();
+          }).catch(error => window.ModuleApp.Toast.show('读取配置失败: ' + (error.message || error), 'warning'));
+          return;
+        case 'TASK_REORDERED':
+          refresh(); return;
+        default:
+          refresh(); return;
+      }
+    });
+
+    // ==================== Quick Add ====================
+    document.getElementById('addBtn').addEventListener('click', quickAdd);
+    document.getElementById('quickInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') quickAdd();
+    });
+
+    async function quickAdd() {
+      const input = document.getElementById('quickInput');
+      const content = input.value.trim();
+      if (!content) return;
+      if (currentTab === 'tasks') {
+        await _api.tasks.create({
+          content,
+          startDate: todayStr(),
+          deadline: null,
+          notes: null,
+          parentId: null,
+        });
+      } else {
+        await _api.notes.create({ content });
+      }
+      input.value = '';
+      refresh();
+    }
+
+    // ==================== Refresh ====================
+    let _widgetComposing = false;
+    let _pendingWidgetRefresh = false;
+    document.addEventListener('compositionstart', () => { _widgetComposing = true; });
+    document.addEventListener('compositionend', () => {
+      _widgetComposing = false;
+      if (_pendingWidgetRefresh) {
+        _pendingWidgetRefresh = false;
+        refresh();
+      }
+    });
+
+    async function refresh() {
+      if (_widgetComposing) {
+        _pendingWidgetRefresh = true;
+        return;
+      }
+      const seq = ++_refreshSeq;
+      const tab = currentTab;
+      const body = document.getElementById('widgetBody');
+      if (tab === 'notes') {
+        const notesList = await _api.notes.list();
+        if (seq !== _refreshSeq || currentTab !== tab) return;
+        if (_widgetComposing) {
+          _pendingWidgetRefresh = true;
+          return;
+        }
+        if (editingNoteId) {
+          const editEl = document.getElementById(`noteEdit_${editingNoteId}`);
+          if (editEl) {
+            editingNoteDraft = (editEl.innerText || editEl.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          }
+          if (!notesList.some(n => n.id === editingNoteId)) {
+            const rescued = (editingNoteDraft || '').trim();
+            if (rescued) {
+              saveRescueDraft({ type: 'note', id: editingNoteId, title: '便签', content: editingNoteDraft });
+              window.ModuleApp.Toast.show('正在编辑的便签已被其他端删除，内容已暂存到恢复栏', 'warning');
+            }
+            editingNoteId = null;
+            editingNoteDraft = null;
+          } else if (editEl && document.activeElement === editEl) {
+            return;
+          }
+        }
+        await renderNotes(body, notesList);
+        renderRescueBar();
+        return;
+      }
+
+      const tasksAll = await _api.tasks.getActive();
+      if (seq !== _refreshSeq || currentTab !== tab) return;
+      if (_widgetComposing) {
+        _pendingWidgetRefresh = true;
+        return;
+      }
+
+      // 必须在异步读取返回之后、替换 DOM 之前读取最新输入，避免旧快照回写覆盖等待期间的新输入
+      let _editingSnapshot = null;
+      if (editingTaskId) {
+        const existingNotesEl = document.getElementById(`editNotes_${editingTaskId}`);
+        if (existingNotesEl) {
+          _editingSnapshot = {
+            id: editingTaskId,
+            deadline: document.getElementById(`editDeadline_${editingTaskId}`)?.value || '',
+            start: document.getElementById(`editStart_${editingTaskId}`)?.value || '',
+            notes: existingNotesEl.value || '',
+            focusEl: document.activeElement?.id || null,
+            selStart: document.activeElement?.selectionStart || 0,
+            selEnd: document.activeElement?.selectionEnd || 0,
+          };
+          editingTaskDraft = { ..._editingSnapshot };
+        }
+        if (!tasksAll.find(t => t.id === editingTaskId)) {
+          const snap = _editingSnapshot || editingTaskDraft;
+          const orig = editingTaskOriginal;
+          const changed = snap && (
+            (snap.notes || '') !== (orig?.notes || '') ||
+            (snap.deadline || '') !== (orig?.deadline || '') ||
+            (snap.start || '') !== (orig?.startDate || '')
+          );
+          if (changed && (snap.notes || snap.deadline || snap.start)) {
+            saveRescueDraft({
+              type: 'task',
+              id: editingTaskId,
+              title: orig?.content || '任务',
+              startDate: snap.start || null,
+              deadline: snap.deadline || null,
+              notes: snap.notes || '',
+            });
+            window.ModuleApp.Toast.show('正在编辑的任务已变更或删除，草稿已暂存到恢复栏', 'warning');
+          }
+          editingTaskId = null;
+          editingTaskOriginal = null;
+          editingTaskDraft = null;
+          _editingSnapshot = null;
+        }
+      }
+      await renderTasks(body, tasksAll);
+      if (_editingSnapshot) {
+        const dlEl = document.getElementById(`editDeadline_${_editingSnapshot.id}`);
+        const stEl = document.getElementById(`editStart_${_editingSnapshot.id}`);
+        const ntEl = document.getElementById(`editNotes_${_editingSnapshot.id}`);
+        if (dlEl) dlEl.value = _editingSnapshot.deadline;
+        if (stEl) stEl.value = _editingSnapshot.start;
+        if (ntEl) ntEl.value = _editingSnapshot.notes;
+        const focusTarget = _editingSnapshot.focusEl && document.getElementById(_editingSnapshot.focusEl);
+        if (focusTarget) {
+          focusTarget.focus();
+          try {
+            if (_editingSnapshot.selStart != null) focusTarget.setSelectionRange(_editingSnapshot.selStart, _editingSnapshot.selEnd);
+          } catch (_) {}
+        }
+      }
+      renderRescueBar();
+    }
+
+    // ==================== Task View ====================
+    async function renderTasks(body, preloadedTasks) {
+      const targetBody = body || document.getElementById('widgetBody');
+      if (!targetBody) return;
+      let tasksAll = preloadedTasks;
+      if (!Array.isArray(tasksAll)) {
+        const seq = ++_refreshSeq;
+        tasksAll = await _api.tasks.getActive();
+        if (seq !== _refreshSeq || currentTab !== 'tasks') return;
+        if (_widgetComposing) {
+          _pendingWidgetRefresh = true;
+          return;
+        }
+      } else if (currentTab !== 'tasks') {
+        return;
+      }
+      _allTasks = tasksAll;
+      // 产品决策：Widget 固定全局分拣（不跟主窗项目过滤）
+      const tasks = tasksAll;
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      // 排序与主窗截止日期视图共用 TaskSort（单源）
+      const Sort = window.ModuleApp.TaskSort;
+      const hierarchyOrder = Sort
+        ? Sort.buildHierarchyOrder(tasks, { includeCompleted: false })
+        : new Map();
+      const unifiedSort = (a, b) => Sort
+        ? Sort.unifiedDeadlineSort(a, b, hierarchyOrder)
+        : 0;
+
+      const overdue = [];
+      const today = [];
+      const upcoming = [];
+      const later = []; // Bug-张冠李戴修复:>7 天的远期任务单独分组
+      const noDeadline = [];
+
+      for (const t of tasks) {
+        // 优先用底层挂载的 urgency（后端 data-store 已算好）,无 urgency 时本地兜底计算
+        const u = t.urgency || (() => {
+          if (!t.deadline) return 'none';
+          const dl = parseLocalDate(t.deadline);
+          if (!dl) return 'none';
+          dl.setHours(0, 0, 0, 0);
+          const diff = Math.round((dl - now) / 86400000);
+          if (diff < 0) return 'overdue';
+          if (diff === 0) return 'today';
+          if (diff <= 7) return 'due-soon';
+          return 'normal';
+        })();
+        const diff = t.daysLeft != null ? t.daysLeft : (() => {
+          if (!t.deadline) return null;
+          const dl = parseLocalDate(t.deadline);
+          if (!dl) return null;
+          dl.setHours(0, 0, 0, 0);
+          return Math.round((dl - now) / 86400000);
+        })();
+        const item = { ...t, diff };
+        if (u === 'overdue') overdue.push(item);
+        else if (u === 'today') today.push(item);
+        else if (u === 'due-soon') upcoming.push(item);
+        else if (u === 'normal') later.push(item); // Bug-张冠李戴修复:远期任务不应塞进 noDeadline
+        else noDeadline.push(t);
+      }
+
+      overdue.sort(unifiedSort);
+      today.sort(unifiedSort);
+      upcoming.sort(unifiedSort);
+      later.sort(unifiedSort);
+      noDeadline.sort((a, b) => (hierarchyOrder.get(a.id) || 0) - (hierarchyOrder.get(b.id) || 0));
+
+      let html = '';
+
+      if (today.length > 0) {
+        html += '<div class="section-label">📌 今天到期</div>';
+        for (const t of today) html += renderTaskItem(t, 'today', tasks);
+      }
+      if (overdue.length > 0) {
+        html += '<div class="section-label">🔴 已逾期</div>';
+        for (const t of overdue) html += renderTaskItem(t, 'overdue', tasks);
+      }
+      if (upcoming.length > 0) {
+        html += '<div class="section-label">📅 近 7 天</div>';
+        for (const t of upcoming) html += renderTaskItem(t, 'normal', tasks);
+      }
+      if (later.length > 0) {
+        html += '<div class="section-label">📅 7天后</div>';
+        for (const t of later) html += renderTaskItem(t, 'normal', tasks);
+      }
+      if (noDeadline.length > 0) {
+        html += '<div class="section-label">📭 无截止日期</div>';
+        for (const t of noDeadline) html += renderTaskItem(t, 'normal', tasks);
+      }
+
+      if (!html) {
+        html = '<div class="empty-hint">🎉 暂无待办任务</div>';
+      }
+
+      targetBody.innerHTML = html;
+      bindTaskEvents();
+    }
+
+    // 递归向上查找父级，计算任务真实嵌套深度（与主窗口一致）
+    function getTaskLevel(task, allTasks) {
+      if (!task || !task.parentId) return 0;
+      let level = 0;
+      let current = task;
+      const visited = new Set([task.id]); // 防御圈:防止 parentId 环路导致死循环
+      while (current.parentId) {
+        if (visited.has(current.parentId)) break;
+        visited.add(current.parentId);
+        level++;
+        current = allTasks.find(t => t.id === current.parentId);
+        if (!current) break;
+      }
+      return level;
+    }
+
+    // 根据任务层级决定色点颜色（与主窗口五级色卡对齐：主+四级子）
+    function getLevelDotColor(t, allTasks) {
+      const level = getTaskLevel(t, allTasks);
+      const colors = [
+        '#2563eb', // Level 0: 主任务 (蓝)
+        '#7c3aed', // Level 1: 一级子任务 (紫)
+        '#0ea5e9', // Level 2: 二级子任务 (青)
+        '#10b981', // Level 3: 三级子任务 (绿)
+        '#f97316'  // Level 4: 四级子任务 (橙)
+      ];
+      return colors[Math.min(level, colors.length - 1)];
+    }
+
+    function renderTaskItem(t, type, allTasks) {
+      allTasks = allTasks || [];
+      const dl = t.deadline ? parseLocalDate(t.deadline) : null;
+      const dateStr = dl ? `${dl.getMonth() + 1}/${dl.getDate()}` : '';
+      const metaText = type === 'overdue' ? `逾期 ${Math.abs(t.diff)} 天` :
+                       type === 'today' ? '今天到期' :
+                       t.diff ? `${t.diff} 天后` : '';
+      const dotColor = getLevelDotColor(t, allTasks);
+      const dotStyle = `style="background:${dotColor}"`;
+      const expanded = editingTaskId === t.id;
+      // 优先级徽章
+      const pLabels = { p0: 'P0', p1: 'P1', p2: 'P2' };
+      const priorityBadge = t.priority
+        ? `<span class="widget-priority ${t.priority}">${pLabels[t.priority] || t.priority}</span>`
+        : '';
+
+      let html = `<div class="task-item" data-task-id="${t.id}">
+        <div class="task-check" data-task-id="${t.id}"></div>
+        <div class="task-dot" ${dotStyle}></div>
+        <div class="task-info">
+          <div class="task-text">${escapeHtml(t.content)}</div>
+          <div class="task-meta ${type}">${priorityBadge}${dateStr}${metaText ? (dateStr ? ' · ' : '') + metaText : ''}${t.notes ? ' · 📝' : ''}</div>
+        </div>
+      </div>`;
+
+      if (expanded) {
+        html += renderTaskActions(t);
+      }
+
+      return html;
+    }
+
+    function renderTaskActions(t) {
+      const draft = editingTaskDraft && editingTaskDraft.id === t.id ? editingTaskDraft : null;
+      const dl = draft ? (draft.deadline || '') : (t.deadline ? t.deadline.split('T')[0] : '');
+      const startDate = draft ? (draft.start || '') : (t.startDate ? t.startDate.split('T')[0] : '');
+      const notes = draft ? (draft.notes || '') : (t.notes || '');
+      return `<div class="task-actions show" data-task-id="${t.id}">
+        <div class="row">
+          <label>截止</label>
+          <input type="date" id="editDeadline_${t.id}" value="${dl}" />
+        </div>
+        <div class="row">
+          <label>开始</label>
+          <input type="date" id="editStart_${t.id}" value="${startDate}" />
+        </div>
+        <div>
+          <label>备注</label>
+          <textarea id="editNotes_${t.id}" placeholder="添加备注...">${escapeHtml(notes)}</textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-cancel" data-action="cancel" data-task-id="${t.id}">取消</button>
+          <button class="btn btn-save" data-action="save" data-task-id="${t.id}">保存</button>
+        </div>
+      </div>`;
+    }
+
+    function bindTaskEvents() {
+      // Click checkbox → complete task
+      body.querySelectorAll('.task-check').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = el.dataset.taskId;
+          await _api.tasks.complete(id);
+          refresh();
+        });
+      });
+
+      // Click task item → toggle quick edit
+      body.querySelectorAll('.task-item').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          if (e.target.classList.contains('task-check')) return;
+          const id = el.dataset.taskId;
+          if (editingTaskId && editingTaskId !== id) {
+            const ok = await saveTaskEdit(editingTaskId, { skipRefresh: true });
+            if (!ok) return;
+          }
+          if (editingTaskId === id) {
+            editingTaskId = null;
+            editingTaskOriginal = null;
+            editingTaskDraft = null;
+          } else {
+            editingTaskId = id;
+            const orig = _allTasks.find(t => t.id === id);
+            editingTaskOriginal = orig ? {
+              content: orig.content || '',
+              deadline: orig.deadline ? orig.deadline.split('T')[0] : '',
+              startDate: orig.startDate ? orig.startDate.split('T')[0] : '',
+              notes: orig.notes || '',
+            } : null;
+            editingTaskDraft = null;
+          }
+          refresh();
+        });
+      });
+
+      // Hover tooltip: 悬停 1 秒显示所有母任务
+      const tooltip = document.getElementById('parentTooltip');
+
+      function showTooltip(taskId) {
+        if (!taskId || _allTasks.length === 0) return;
+        // 沿 parentId 链向上收集所有祖先
+        const chain = [];
+        let cur = _allTasks.find(t => t.id === taskId);
+        if (!cur || !cur.parentId) return;
+        let pid = cur.parentId;
+        const guard = new Set([cur.id]); // 防御圈:防止 parentId 环路
+        while (pid && !guard.has(pid)) {
+          guard.add(pid);
+          const parent = _allTasks.find(t => t.id === pid);
+          if (!parent) break;
+          chain.unshift(parent);
+          pid = parent.parentId;
+        }
+        if (chain.length === 0) return;
+
+        // 构建 HTML
+        let h = '<div class="chain-label">母任务链</div>';
+        for (let i = 0; i < chain.length; i++) {
+          const p = chain[i];
+          const level = i; // 0=主任务, 1=一级子, ...
+          const colors = ['#6366f1', '#a855f7', '#06b6d4', '#f59e0b'];
+          const dotColor = colors[level] || colors[colors.length - 1];
+          if (i > 0) h += '<span class="chain-arrow">→</span>';
+          h += `<span class="chain-dot" style="background:${dotColor}"></span>`;
+          h += `<span class="chain-text">${escapeHtml(p.content || '(空)')}</span>`;
+        }
+        tooltip.innerHTML = h;
+        // 定位在鼠标右下方,并做边缘碰撞检测防止溢出小组件窗口
+        tooltip.style.left = (mouseX + 14) + 'px';
+        tooltip.style.top = (mouseY + 14) + 'px';
+        tooltip.classList.add('visible');
+        const rect = tooltip.getBoundingClientRect();
+        if (tooltip.offsetLeft + rect.width > window.innerWidth) {
+          tooltip.style.left = Math.max(0, mouseX - rect.width - 10) + 'px';
+        }
+        if (tooltip.offsetTop + rect.height > window.innerHeight) {
+          tooltip.style.top = Math.max(0, mouseY - rect.height - 10) + 'px';
+        }
+      }
+
+      function hideTooltip() {
+        tooltip.classList.remove('visible');
+      }
+
+      body.querySelectorAll('.task-item').forEach(el => {
+        el.addEventListener('mouseenter', function(e) {
+          const id = el.dataset.taskId;
+          const task = _allTasks.find(t => t.id === id);
+          if (!task || !task.parentId) return;
+          _hoverTarget = el;
+          _hoverTimer = setTimeout(() => {
+            if (_hoverTarget === el) showTooltip(id);
+          }, 1000);
+        });
+        el.addEventListener('mouseleave', function() {
+          _hoverTarget = null;
+          if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; }
+          hideTooltip();
+        });
+      });
+
+      // Sync task draft inputs
+      body.querySelectorAll('.task-actions').forEach(panel => {
+        const id = panel.dataset.taskId;
+        const syncDraft = () => {
+          if (editingTaskId !== id) return;
+          editingTaskDraft = {
+            id,
+            deadline: document.getElementById(`editDeadline_${id}`)?.value || '',
+            start: document.getElementById(`editStart_${id}`)?.value || '',
+            notes: document.getElementById(`editNotes_${id}`)?.value || '',
+          };
+        };
+        panel.querySelectorAll('input, textarea').forEach(inp => {
+          inp.addEventListener('input', syncDraft);
+        });
+      });
+
+      // Save / Cancel buttons
+      body.querySelectorAll('.task-actions .btn').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = el.dataset.taskId;
+          const action = el.dataset.action;
+          if (action === 'cancel') {
+            editingTaskId = null;
+            editingTaskOriginal = null;
+            editingTaskDraft = null;
+            refresh();
+          } else if (action === 'save') {
+            await saveTaskEdit(id);
+          }
+        });
+      });
+    }
+
+    function _readTaskEditInputs(id, fallback = null) {
+      const deadlineEl = document.getElementById(`editDeadline_${id}`);
+      const startEl = document.getElementById(`editStart_${id}`);
+      const notesEl = document.getElementById(`editNotes_${id}`);
+      const draft = editingTaskDraft && editingTaskDraft.id === id ? editingTaskDraft : null;
+      return {
+        deadline: deadlineEl ? deadlineEl.value : (draft ? (draft.deadline || '') : (fallback?.deadline || '')),
+        start: startEl ? startEl.value : (draft ? (draft.start || '') : (fallback?.start || '')),
+        notes: notesEl ? notesEl.value : (draft ? (draft.notes || '') : (fallback?.notes || '')),
+      };
+    }
+
+    async function saveTaskEdit(id, opts = {}) {
+      if (_pendingTaskSave) {
+        try { await _pendingTaskSave; } catch (_) {}
+        if (editingTaskId !== id) return true;
+      }
+      if (editingTaskId && editingTaskId !== id) return true;
+
+      const submitted = _readTaskEditInputs(id);
+      const deadline = submitted.deadline || null;
+      const startDate = submitted.start || null;
+      const notes = submitted.notes || null;
+      if (startDate && deadline && deadline < startDate) {
+        window.ModuleApp.Toast.show('截止日期不能早于开始日期', true);
+        return false;
+      }
+      editingTaskDraft = { id, deadline: submitted.deadline, start: submitted.start, notes: submitted.notes };
+      const commit = (async () => {
+        try {
+          await _api.tasks.update(id, { deadline, startDate, notes });
+          const latest = _readTaskEditInputs(id, submitted);
+          const changedWhileSaving =
+            latest.deadline !== submitted.deadline ||
+            latest.start !== submitted.start ||
+            latest.notes !== submitted.notes;
+          if (changedWhileSaving) {
+            if (editingTaskId === id) {
+              editingTaskOriginal = {
+                content: editingTaskOriginal?.content || '',
+                deadline: submitted.deadline,
+                startDate: submitted.start,
+                notes: submitted.notes,
+              };
+              editingTaskDraft = { id, deadline: latest.deadline, start: latest.start, notes: latest.notes };
+              if (!opts.skipRefresh) await refresh();
+              return false;
+            }
+            saveRescueDraft({
+              type: 'task',
+              id,
+              title: editingTaskOriginal?.content || '任务',
+              startDate: latest.start || null,
+              deadline: latest.deadline || null,
+              notes: latest.notes || '',
+            });
+            renderRescueBar();
+            return false;
+          }
+          if (editingTaskId === id) {
+            editingTaskId = null;
+            editingTaskOriginal = null;
+            editingTaskDraft = null;
+          }
+          if (!opts.skipRefresh) await refresh();
+          return true;
+        } catch (err) {
+          let stillActive = true;
+          try {
+            const active = await _api.tasks.getActive();
+            stillActive = active.some(t => t.id === id);
+          } catch (_) {}
+          const latest = _readTaskEditInputs(id, submitted);
+          if (!stillActive) {
+            saveRescueDraft({
+              type: 'task',
+              id,
+              title: editingTaskOriginal?.content || '任务',
+              startDate: latest.start || null,
+              deadline: latest.deadline || null,
+              notes: latest.notes || '',
+            });
+            editingTaskId = null;
+            editingTaskOriginal = null;
+            editingTaskDraft = null;
+            window.ModuleApp.Toast.show('任务已被删除或完成，草稿已暂存到恢复栏', 'warning');
+            if (!opts.skipRefresh) await refresh();
+            return false;
+          }
+          if (editingTaskId === id) {
+            editingTaskDraft = { id, deadline: latest.deadline, start: latest.start, notes: latest.notes };
+          }
+          window.ModuleApp.Toast.show('保存失败，已保留编辑内容: ' + (err?.message || err), true);
+          return false;
+        }
+      })();
+      _pendingTaskSave = commit;
+      try {
+        return await commit;
+      } finally {
+        if (_pendingTaskSave === commit) _pendingTaskSave = null;
+      }
+    }
+
+    // ==================== Note View ====================
+    async function renderNotes(body, preloadedNotes) {
+      // 自动获取组件 body 容器，避免不传参时对 undefined 赋值
+      const targetBody = body || document.getElementById('widgetBody');
+      if (!targetBody) return;
+
+      let notes = preloadedNotes;
+      if (!Array.isArray(notes)) {
+        const seq = ++_refreshSeq;
+        notes = await _api.notes.list();
+        if (seq !== _refreshSeq || currentTab !== 'notes') return;
+        if (_widgetComposing) {
+          _pendingWidgetRefresh = true;
+          return;
+        }
+      } else if (currentTab !== 'notes') {
+        return;
+      }
+
+      if (editingNoteId && !notes.some(n => n.id === editingNoteId)) {
+        const rescued = (editingNoteDraft || '').trim();
+        if (rescued) {
+          saveRescueDraft({ type: 'note', id: editingNoteId, title: '便签', content: editingNoteDraft });
+          window.ModuleApp.Toast.show('正在编辑的便签已被其他端删除，内容已暂存到恢复栏', 'warning');
+        }
+        editingNoteId = null;
+        editingNoteDraft = null;
+      }
+
+      if (notes.length === 0) {
+        targetBody.innerHTML = '<div class="empty-hint">📝 暂无便签</div>';
+        return;
+      }
+
+      let html = '';
+      for (const n of notes) {
+        const editing = editingNoteId === n.id;
+        const editText = editing && editingNoteDraft != null ? editingNoteDraft : n.content;
+        const colorClass = n.color && n.color !== 'default' ? `color-${n.color}` : '';
+        const pinnedClass = n.pinned ? 'pinned' : '';
+
+        html += `<div class="note-item ${colorClass} ${pinnedClass}" data-note-id="${n.id}" ${editing ? '' : 'draggable="true"'}>
+          <div class="note-drag-handle" title="拖拽排序">⠿</div>
+          ${editing
+            ? `<div class="note-text editing" contenteditable="true" id="noteEdit_${n.id}">${escapeHtml(editText)}</div>`
+            : `<div class="note-text">${escapeHtml(n.content)}</div>`
+          }
+          <div class="note-footer">
+            <span class="note-time">${formatTime(n.updatedAt)}${n.pinned ? ' · 📌' : ''}</span>
+            <div class="note-actions">
+              <span class="note-action" data-action="pin" data-note-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</span>
+              <span class="note-action" data-action="color" data-note-id="${n.id}">🎨</span>
+              <span class="note-action" data-action="edit" data-note-id="${n.id}">${editing ? '完成' : '编辑'}</span>
+              <span class="note-action danger" data-action="delete" data-note-id="${n.id}">删除</span>
+            </div>
+          </div>
+          <div class="note-color-picker" id="colorPicker_${n.id}">
+            <div class="color-dot default" data-color="default" data-note-id="${n.id}"></div>
+            <div class="color-dot yellow" data-color="yellow" data-note-id="${n.id}"></div>
+            <div class="color-dot green" data-color="green" data-note-id="${n.id}"></div>
+            <div class="color-dot pink" data-color="pink" data-note-id="${n.id}"></div>
+            <div class="color-dot blue" data-color="blue" data-note-id="${n.id}"></div>
+          </div>
+        </div>`;
+      }
+
+      targetBody.innerHTML = html;
+      bindNoteEvents();
+
+      // If editing, focus the editable area
+      if (editingNoteId) {
+        const editEl = document.getElementById(`noteEdit_${editingNoteId}`);
+        if (editEl) {
+          editEl.focus();
+          // Place cursor at end
+          const range = document.createRange();
+          range.selectNodeContents(editEl);
+          range.collapse(false);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    }
+
+    function bindNoteEvents() {
+      // Click note item → edit (unless clicking an action)
+      document.getElementById('widgetBody').querySelectorAll('.note-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('.note-actions')) return;
+          if (e.target.closest('.note-drag-handle')) return;
+          if (e.target.closest('.note-color-picker')) return;
+          if (e.target.classList.contains('note-text') && e.target.classList.contains('editing')) return;
+          const id = el.dataset.noteId;
+          // If currently editing this note, save and close
+          if (editingNoteId === id) {
+            saveNoteEdit(id);
+          } else {
+            editingNoteId = id;
+            refresh();
+          }
+        });
+
+        // Bug-键盘流打断修复:给正在编辑的便签补 Ctrl+Enter 快捷保存
+        const editEl = el.querySelector('.note-text.editing');
+        if (editEl) {
+          editEl.addEventListener('input', () => {
+            editingNoteDraft = (editEl.innerText || editEl.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          });
+          editEl.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault();
+              saveNoteEdit(el.dataset.noteId);
+            }
+          });
+          // Bug-109 富文本污染修复:拦截 paste 事件,强制转换为纯文本。
+          // 否则从网页复制带图、加粗红字的 HTML 粘贴进来会瞬间撑爆组件 UI。
+          // 虽然保存时用 innerText 净化,但粘贴瞬间的视觉崩坏非常掉价。
+          editEl.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+            // execCommand insertText 在光标位置插入纯文本,符合浏览器兼容性
+            if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+              document.execCommand('insertText', false, text);
+            } else {
+              // 兜底:用 Selection API 直接插入
+              const sel = window.getSelection();
+              if (!sel || !sel.rangeCount) return;
+              const range = sel.getRangeAt(0);
+              range.deleteContents();
+              range.insertNode(document.createTextNode(text));
+              range.collapse(false);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
+          });
+        }
+      });
+
+      // Note actions
+      body.querySelectorAll('.note-action').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = el.dataset.noteId;
+          const action = el.dataset.action;
+
+          if (action === 'pin') {
+            const note = await _api.notes.list().then(ns => ns.find(n => n.id === id));
+            await _api.notes.update(id, { pinned: !note.pinned });
+            refresh();
+          } else           if (action === 'edit') {
+            if (editingNoteId === id) {
+              // 已经在编辑中，无需任何操作（失焦已有 saveNoteEdit 兜底）
+              return;
+            } else {
+              editingNoteId = id;
+              refresh();
+            }
+          } else if (action === 'delete') {
+            await _api.notes.delete(id);
+            editingNoteId = null;
+            refresh();
+          } else if (action === 'color') {
+            const picker = document.getElementById(`colorPicker_${id}`);
+            picker.classList.toggle('show');
+          }
+        });
+      });
+
+      // Color picker dots
+      body.querySelectorAll('.color-dot').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = el.dataset.noteId;
+          const color = el.dataset.color;
+          // Bug-调色盘抹字修复:点调色盘时 contenteditable 会先 blur,
+          // 必须先把当前正在编辑的文本同步保存,再切颜色,否则 refresh() 会把未保存内容清空
+          if (editingNoteId === id) {
+            const editEl = document.getElementById(`noteEdit_${id}`);
+            if (editEl) {
+              const content = (editEl.innerText || editEl.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+              // 先清掉编辑态,再合并保存
+              editingNoteId = null;
+              try { await _api.notes.update(id, { content, color }); } catch (_) {}
+              return renderNotes();
+            }
+          }
+          await _api.notes.update(id, { color });
+          renderNotes();
+        });
+      });
+
+      // Drag and drop reordering
+      let dragSourceId = null;
+
+      body.querySelectorAll('.note-item').forEach(el => {
+        el.addEventListener('dragstart', (e) => {
+          dragSourceId = el.dataset.noteId;
+          el.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dragging');
+          body.querySelectorAll('.note-item').forEach(n => n.classList.remove('drag-over'));
+          dragSourceId = null;
+        });
+
+        el.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (el.dataset.noteId !== dragSourceId) {
+            el.classList.add('drag-over');
+          }
+        });
+
+        el.addEventListener('dragleave', () => {
+          el.classList.remove('drag-over');
+        });
+
+        el.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          el.classList.remove('drag-over');
+          const targetId = el.dataset.noteId;
+          if (!dragSourceId || dragSourceId === targetId) { dragSourceId = null; return; }
+
+          // Reorder: move source before target (仅在同一组内重排,避免污染另一组的 order 命名空间)
+          const notes = await _api.notes.list();
+          const sourceNote = notes.find(n => n.id === dragSourceId);
+          const targetNote = notes.find(n => n.id === targetId);
+          if (!sourceNote || !targetNote) { dragSourceId = null; return; }
+
+          // Bug-便签跨界修复:置顶便签与普通便签不能交叉排序(后端 getNotes 永远把置顶排前面)
+          if (sourceNote.pinned !== targetNote.pinned) {
+            window.ModuleApp.Toast.show('置顶便签与普通便签不能交叉排序', 'warning');
+            dragSourceId = null;
+            return;
+          }
+
+          // Bug-95 命名空间污染修复:只在同组内重新计算 order,不要把另一组的便签卷进来重新编号。
+          // 旧逻辑:遍历合并后的总列表 → 置顶会被赋 order 0/1,普通便签会被赋 2/3/4。
+          // 恶果:取消置顶第一个便签后,它会被"火箭"式卡到普通便签最顶部,普通拖拽极难修复。
+          const groupNotes = notes.filter(n => n.pinned === sourceNote.pinned);
+          const sourceIdx = groupNotes.findIndex(n => n.id === dragSourceId);
+          const targetIdx = groupNotes.findIndex(n => n.id === targetId);
+          if (sourceIdx === -1 || targetIdx === -1) { dragSourceId = null; return; }
+
+          const reorderedGroup = [...groupNotes];
+          const [moved] = reorderedGroup.splice(sourceIdx, 1);
+          // Bug-向下错位修复:从上往下拖时,移除 source 后 target 的实际索引已 -1
+          let adjustedTargetIdx = targetIdx;
+          if (sourceIdx < targetIdx) adjustedTargetIdx--;
+          reorderedGroup.splice(adjustedTargetIdx, 0, moved);
+
+          // 只把同组的更新发送给后端,另一组的 order 保持原值不动
+          const items = reorderedGroup.map((n, i) => ({ id: n.id, order: i }));
+          await _api.notes.reorder(items);
+          renderNotes();
+          dragSourceId = null;
+        });
+      });
+    }
+
+    async function saveNoteEdit(id) {
+      if (_pendingNoteSave) return _pendingNoteSave;
+      if (editingNoteId !== id) return;
+      const editEl = document.getElementById(`noteEdit_${id}`);
+      const rawDraft = editEl
+        ? (editEl.innerText || editEl.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+        : editingNoteDraft;
+      if (rawDraft == null) return;
+      const content = rawDraft.trim();
+      if (!content) {
+        window.ModuleApp.Toast.show('便签内容不能为空，已取消修改', 'warning');
+        editingNoteId = null;
+        editingNoteDraft = null;
+        refresh();
+        return;
+      }
+      editingNoteDraft = rawDraft;
+      const commit = (async () => {
+        try {
+          await _api.notes.update(id, { content });
+          const curEl = document.getElementById(`noteEdit_${id}`);
+          const latestRaw = curEl
+            ? (curEl.innerText || curEl.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+            : editingNoteDraft;
+          if (editingNoteId === id && (latestRaw || '').trim() === content) {
+            editingNoteId = null;
+            editingNoteDraft = null;
+          } else if (editingNoteId === id) {
+            editingNoteDraft = latestRaw;
+          }
+          await refresh();
+        } catch (err) {
+          let exists = true;
+          try {
+            const list = await _api.notes.list();
+            exists = list.some(n => n.id === id);
+          } catch (_) {}
+          const curEl = document.getElementById(`noteEdit_${id}`);
+          const latestRaw = curEl
+            ? (curEl.innerText || curEl.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+            : (editingNoteDraft ?? rawDraft);
+          if (!exists) {
+            saveRescueDraft({ type: 'note', id, title: '便签', content: latestRaw });
+            editingNoteId = null;
+            editingNoteDraft = null;
+            window.ModuleApp.Toast.show('便签已被删除，内容已暂存到下方恢复栏', 'warning');
+            await refresh();
+          } else {
+            editingNoteDraft = latestRaw;
+            window.ModuleApp.Toast.show('保存失败，已保留编辑内容: ' + (err?.message || err), true);
+          }
+        }
+      })();
+      _pendingNoteSave = commit;
+      try {
+        await commit;
+      } finally {
+        if (_pendingNoteSave === commit) _pendingNoteSave = null;
+      }
+    }
+
+    // ==================== Utils ====================
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s || '';
+      return div.innerHTML;
+    }
+
+    function formatTime(iso) {
+      const d = new Date(iso);
+      const now = new Date();
+      const diff = (now - d) / 1000;
+      if (diff < 60) return '刚刚';
+      if (diff < 3600) return Math.floor(diff / 60) + '分钟前';
+      if (diff < 86400) return Math.floor(diff / 3600) + '小时前';
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    }
+
+    function todayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+
+    function applyWidgetTheme(theme) {
+      if (theme !== 'light' && theme !== 'dark') return; // 忽略无关 config 补丁
+      document.body.classList.toggle('theme-light', theme === 'light');
+    }
+
+    // ==================== Init ====================
+    const body = document.getElementById('widgetBody');
+    _api.config.get().then(cfg => {
+      if (cfg && cfg.theme) applyWidgetTheme(cfg.theme);
+      // 固定全局分拣：清空历史 widget 项目过滤
+      widgetProjectScopeIds = [];
+      if (Array.isArray(cfg?.widgetProjectScopeIds) && cfg.widgetProjectScopeIds.length > 0) {
+        _api.config.update({ widgetProjectScopeIds: [] }).catch(() => {});
+      }
+    }).catch(() => {});
+    renderRescueBar();
+    refresh();
+    // Bug-定时器累积修复:链式 setTimeout,确保上一次渲染彻底结束再开始下一次
+    function scheduleNextRefresh() {
+      setTimeout(async () => {
+        // Bug-108 猝死修复:链式定时器必须用 try/finally 保护,即使 refresh() 抛错也要接力。
+        // 否则某次 IPC 失败 / DOM 异常会让下一次调度永远不发生,组件彻底瞎掉。
+        try {
+          await refresh();
+        } catch (err) {
+          console.error('[widget] refresh failed, will retry next cycle:', err);
+        } finally {
+          scheduleNextRefresh();
+        }
+      }, 5 * 60 * 1000);
+    }
+    scheduleNextRefresh();
+
+    // ==================== 全局交互事件 ====================
+    // 点击便签/任务外部空白处，自动保存并退出编辑状态
+    document.addEventListener('click', async (e) => {
+      // Bug-97 焦点厮杀修复:捕获阶段会优先于输入框自身事件执行,
+      // 当用户在编辑面板内点击 input/textarea(尤其是原生 date 的日历图标)时,
+      // 浏览器若判定事件穿透到父容器,这个监听器会瞬间销毁编辑态。
+      // 放行条件:目标是 INPUT 或 TEXTAREA 时,直接 return,不要强行销毁。
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+      if (currentTab === 'notes' && editingNoteId) {
+        const editingItem = document.querySelector(`.note-item[data-note-id="${editingNoteId}"]`);
+        if (editingItem && !editingItem.contains(e.target)) {
+          const prevId = editingNoteId;
+          try { await saveNoteEdit(prevId); } catch (_) {}
+          if (editingNoteId === prevId) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }
+      }
+      // Bug-任务编辑静默丢失修复:任务 Tab 下点击外部(切 Tab、点空白)时,自动保存正在编辑的任务
+      if (currentTab === 'tasks' && editingTaskId) {
+        const taskItem = document.querySelector(`.task-item[data-task-id="${editingTaskId}"]`);
+        if (taskItem && !taskItem.contains(e.target)) {
+          const ok = await saveTaskEdit(editingTaskId);
+          if (!ok && editingTaskId) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }
+      }
+    }, true); // 捕获阶段确保优先于子元素事件触发
+  </script>
+</body>
+</html>

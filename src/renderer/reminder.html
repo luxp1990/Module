@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>任务提醒</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: #1e293b;
+    color: #e2e8f0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    overflow: hidden;
+  }
+  .hdr {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #334155;
+    flex-shrink: 0;
+  }
+  .hdr h1 { font-size: 15px; font-weight: 700; color: #f1f5f9; }
+  .hdr .sub { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px 16px;
+  }
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .empty.cheer { color: #a5b4fc; font-size: 15px; font-weight: 600; }
+  .section { margin-bottom: 14px; }
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    padding: 0 4px;
+  }
+  .section-title.overdue { color: #fca5a5; }
+  .section-title.today { color: #fbbf24; }
+  .section-title.tomorrow { color: #86efac; }
+  .row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    color: #e2e8f0;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .row:hover { border-color: #6366f1; background: #111827; }
+  .row .chain {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+  }
+  .row .meta {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    color: #64748b;
+  }
+  .row.overdue .meta { color: #fca5a5; }
+  .more {
+    font-size: 11px;
+    color: #64748b;
+    padding: 4px 6px;
+  }
+  .foot {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    border-top: 1px solid #334155;
+    text-align: right;
+  }
+  .btn {
+    background: #334155;
+    color: #e2e8f0;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .btn:hover { background: #475569; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <h1 id="title">任务提醒</h1>
+    <div class="sub" id="subtitle"></div>
+  </div>
+  <div class="body" id="body"></div>
+  <div class="foot">
+    <button class="btn" id="closeBtn">关闭</button>
+  </div>
+<script src="api-bridge.js"></script>
+<script>
+  const _api = window.api;
+  let currentOpts = { mode: 'full', useScope: false };
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function titleForMode(mode) {
+    if (mode === 'near') return '近两日到期';
+    if (mode === 'overdue') return '已延期';
+    return '每日提醒';
+  }
+
+  function render(payload) {
+    const body = document.getElementById('body');
+    document.getElementById('title').textContent = titleForMode(payload.mode);
+    const c = payload.counts || {};
+    document.getElementById('subtitle').textContent = payload.todayStr
+      ? `本地日 ${payload.todayStr}` + (c.all != null ? ` · 共 ${c.all} 项` : '')
+      : '';
+
+    if (payload.emptyMessage) {
+      body.innerHTML = `<div class="empty ${payload.emptyCheer ? 'cheer' : ''}">${escapeHtml(payload.emptyMessage)}</div>`;
+      return;
+    }
+
+    let html = '';
+    for (const sec of payload.sections || []) {
+      const cls = sec.key === 'overdue' ? 'overdue' : sec.key === 'today' ? 'today' : sec.key === 'tomorrow' ? 'tomorrow' : '';
+      html += `<div class="section"><div class="section-title ${cls}">${escapeHtml(sec.title)}（${sec.rows.length}${sec.more ? '+' : ''}）</div>`;
+      for (const row of sec.rows) {
+        html += `<button type="button" class="row ${sec.key === 'overdue' ? 'overdue' : ''}" data-id="${escapeHtml(row.id)}">` +
+          `<span class="chain" title="${escapeHtml(row.chain)}">${escapeHtml(row.chain)}</span>` +
+          `<span class="meta">${escapeHtml(row.deadline)}</span></button>`;
+      }
+      if (sec.more > 0) html += `<div class="more">还有 ${sec.more} 项未列出</div>`;
+      html += '</div>';
+    }
+    body.innerHTML = html || `<div class="empty">没有需要关注的任务</div>`;
+  }
+
+  async function load() {
+    try {
+      const payload = await _api.reminder.getPayload(currentOpts);
+      render(payload || { emptyMessage: '加载失败', sections: [], counts: {} });
+    } catch (e) {
+      render({ emptyMessage: '加载失败：' + (e.message || e), sections: [], counts: {} });
+    }
+  }
+
+  document.getElementById('body').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-id]');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    try { await _api.reminder.focusTask(id); } catch (_) {}
+  });
+
+  async function dismissReminderWindow() {
+    try {
+      if (_api && _api.window && _api.window.hide) {
+        await _api.window.hide();
+      } else if (window.__TAURI__ && window.__TAURI__.window) {
+        await window.__TAURI__.window.getCurrentWindow().hide();
+      }
+    } catch (e) {
+      console.warn('Failed to hide reminder window:', e);
+    }
+  }
+
+  document.getElementById('closeBtn').addEventListener('click', () => dismissReminderWindow());
+
+  // Esc：激活本窗时关闭（不关主窗）
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      dismissReminderWindow();
+    }
+  });
+
+  _api.reminder.onShow((opts) => {
+    currentOpts = opts || { mode: 'full', useScope: false };
+    load();
+  });
+
+  // 首屏：从 query 读 mode（侧栏直开）
+  try {
+    const q = new URLSearchParams(location.search);
+    const mode = q.get('mode') || 'full';
+    const useScope = q.get('scope') === '1';
+    currentOpts = { mode, useScope };
+  } catch (_) {}
+  load();
+
+  _api.onDataChange?.(() => { load(); });
+</script>
+</body>
+</html>

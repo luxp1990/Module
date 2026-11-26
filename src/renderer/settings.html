@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统设置</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: #1e293b;
+    color: #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 20px;
+    height: 100vh;
+    user-select: none;
+    overflow-y: auto;
+  }
+  h2 { font-size: 18px; margin-bottom: 24px; color: #f1f5f9; width: 100%; text-align: center; }
+
+  .setting-group {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+    width: 360px;
+    margin-bottom: 16px;
+  }
+  .group-title {
+    font-size: 14px;
+    color: #94a3b8;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  /* 快捷键区域 */
+  .key-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1e293b;
+    border: 2px solid #6366f1;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #a5b4fc;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .key-display:hover { border-color: #818cf8; box-shadow: 0 0 12px rgba(99,102,241,0.3); }
+  .key-display.recording { border-color: #f59e0b; color: #fbbf24; animation: pulse 1s infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(245,158,11,0.3); }
+    50% { box-shadow: 0 0 16px rgba(245,158,11,0.5); }
+  }
+  .hint { font-size: 12px; color: #64748b; margin-top: 10px; text-align: center; }
+
+  /* 参数配置区域 */
+  .field {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .field:last-child { margin-bottom: 0; }
+  .field label { font-size: 13px; color: #cbd5e1; }
+  .field input {
+    width: 70px;
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: #e2e8f0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    outline: none;
+    text-align: center;
+    font-family: monospace;
+    font-size: 14px;
+  }
+  .field input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #6366f1;
+  }
+  .field input[type="time"] {
+    width: 110px;
+    text-align: left;
+  }
+  .field input:focus { border-color: #6366f1; }
+
+  .btn-row { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+  .btn { padding: 8px 24px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: #6366f1; color: #fff; }
+  .btn-secondary { background: #334155; color: #cbd5e1; }
+
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: #22c55e; color: #fff; padding: 10px 24px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100;
+  }
+  .toast.error { background: #ef4444; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<h2>⚙️ 全局设置</h2>
+
+<div class="setting-group">
+  <div class="group-title">桌面组件快捷键</div>
+  <div class="key-display" id="keyDisplay" title="点击后按下新的组合键">
+    <span id="keyText">Ctrl+Shift+M</span>
+  </div>
+  <p class="hint" id="keyHint">点击框内，然后按下新的组合键</p>
+</div>
+
+<div class="setting-group">
+  <div class="group-title">数据保留策略</div>
+  <div class="field">
+    <label>已完成任务清理 (30 - 180天)</label>
+    <input type="number" id="taskDays" min="30" max="180" />
+  </div>
+  <div class="field">
+    <label>历史周报保留 (5 - 22周)</label>
+    <input type="number" id="reportWeeks" min="5" max="22" />
+  </div>
+</div>
+
+<div class="setting-group">
+  <div class="group-title">每日任务提醒</div>
+  <div class="field">
+    <label>启用提醒</label>
+    <input type="checkbox" id="reminderEnabled" />
+  </div>
+  <div class="field">
+    <label>提醒时间（本地）</label>
+    <input type="time" id="reminderTime" value="17:00" />
+  </div>
+  <p class="hint">到点弹出摘要通知 + 任务列表窗；错过则唤醒后补一次</p>
+</div>
+
+<div class="btn-row">
+  <button class="btn btn-secondary" id="cancelBtn">取消</button>
+  <button class="btn btn-primary" id="saveBtn">保存全部</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="api-bridge.js"></script>
+<script>
+  const _api = window.api;
+  let currentKey = '';
+  let recording = false;
+  let toastTimer = null; // Bug-修复 4:Toast 连点竞态——统一句柄,新 Toast 触发时清理旧的
+
+  // Bug-99 时空悖论防御:保存确认兜底里要拿旧的保留天数/周数做对比,
+  // 提到外层让 saveBtn handler 闭包可见(原本写在 loadCurrent 局部 const,外部读不到)
+  let prevDays = 180;
+  let prevWeeks = 22;
+
+  const keyDisplay = document.getElementById('keyDisplay');
+  const keyText = document.getElementById('keyText');
+  const keyHint = document.getElementById('keyHint');
+  const toast = document.getElementById('toast');
+  const inputTaskDays = document.getElementById('taskDays');
+  const inputReportWeeks = document.getElementById('reportWeeks');
+  const inputReminderEnabled = document.getElementById('reminderEnabled');
+  const inputReminderTime = document.getElementById('reminderTime');
+
+  // Bug-黑名单:禁止 Ctrl+单字母 防止劫持系统快捷键
+  const HOTKEY_BLACKLIST = {
+    'C': true, 'V': true, 'X': true, 'A': true, 'Z': true,
+    'S': true, 'P': true, 'F': true, 'D': true, 'W': true,
+    'N': true, 'B': true, 'G': true, 'H': true, 'R': true,
+    'Q': true, 'U': true, 'E': true, 'O': true, 'Y': true,
+    'L': true, 'K': true, 'J': true, 'I': true, 'M': true,
+    'T': true, 'COMMANDORCONTROL': true
+  };
+
+  async function loadCurrent() {
+    try {
+      const hkResult = await _api.hotkey.get();
+      currentKey = hkResult.hotkey || 'CommandOrControl+Shift+M';
+      keyText.textContent = formatKey(currentKey);
+
+      const cfgResult = await _api.config.get();
+      prevDays = cfgResult?.taskRetentionDays ?? 180;
+      prevWeeks = cfgResult?.reportRetentionWeeks ?? 22;
+      inputTaskDays.value = prevDays;
+      inputReportWeeks.value = prevWeeks;
+      inputReminderEnabled.checked = !!cfgResult?.dailyReminderEnabled;
+      const hh = Number.isFinite(cfgResult?.dailyReminderHour) ? cfgResult.dailyReminderHour : 17;
+      const mm = Number.isFinite(cfgResult?.dailyReminderMinute) ? cfgResult.dailyReminderMinute : 0;
+      inputReminderTime.value =
+        String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function formatKey(raw) {
+    return raw.replace('CommandOrControl', 'Ctrl').split('+').filter(Boolean).join(' + ');
+  }
+
+  // Bug-修复 4:Toast 连点竞态。每次触发先 clear 旧定时器再赋新的,
+  // 避免前一个 2500ms 计时器中途把当前 Toast 的 .show 抹掉造成"刚弹出就消失"
+  function showToast(msg, isError = false) {
+    toast.textContent = msg;
+    toast.className = `toast show ${isError ? 'error' : ''}`;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  // 快捷键录制
+  keyDisplay.addEventListener('click', () => {
+    if (recording) return;
+    recording = true;
+    keyDisplay.classList.add('recording');
+    keyText.textContent='...';
+    keyHint.textContent = '请按下新的组合键 (支持符号和空格，按 Esc 取消)';
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Bug-修复 3:Esc 直接退出录制,恢复原快捷键显示,避免"绑架式交互"
+    if (e.key === 'Escape') {
+      keyText.textContent = formatKey(currentKey);
+      stopRecording();
+      return;
+    }
+
+    const parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push('CommandOrControl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+
+    let mainKey = '';
+    // Bug-修复 2:扩大正则,支持标点/方括号/反斜杠/分号/逗号/点/斜杠等常用符号
+    if (/^[a-zA-Z0-9`\-=\[\]\\;',./]$/.test(e.key)) {
+      mainKey = e.key.toUpperCase();
+    } else {
+      const specialMap = {
+        'F1':'F1','F2':'F2','F3':'F3','F4':'F4','F5':'F5','F6':'F6',
+        'F7':'F7','F8':'F8','F9':'F9','F10':'F10','F11':'F11','F12':'F12',
+        ' ' :'Space', 'Enter':'Enter', 'Tab':'Tab'
+      };
+      if (specialMap[e.key]) mainKey = specialMap[e.key];
+    }
+
+    // Bug-修复 1:必须同时满足"有修饰键" AND "有主键"才算合法。
+    // 旧逻辑只判 parts.length >= 2,会让 Ctrl+Shift(纯修饰键)误判为合法,
+    // globalShortcut 不接受无主键组合,后端注册直接失败。
+    if (parts.length > 0 && mainKey) {
+      parts.push(mainKey);
+
+      const hasCtrlOnly = parts.includes('CommandOrControl') && parts.length === 2;
+      if (hasCtrlOnly && HOTKEY_BLACKLIST[mainKey]) {
+        keyText.textContent = `⚠️ 禁止使用 Ctrl+${mainKey}`;
+        // Bug-细节:守卫 recording,避免取消录制后这条 setTimeout 还在覆盖原显示
+        setTimeout(() => { if (recording) keyText.textContent = '...'; }, 1500);
+        return;
+      }
+
+      currentKey = parts.join('+');
+      keyText.textContent = formatKey(currentKey);
+      stopRecording();
+    } else {
+      keyText.textContent = '需要修饰键 + 字母/数字/符号';
+    }
+  });
+
+  function stopRecording() {
+    recording = false;
+    keyDisplay.classList.remove('recording');
+    keyHint.textContent = '点击框内，然后按下新的组合键';
+  }
+
+  // 保存与取消
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const days = parseInt(inputTaskDays.value, 10);
+    const weeks = parseInt(inputReportWeeks.value, 10);
+
+    if (isNaN(days) || days < 30 || days > 180) return showToast('任务保留天数需在 30-180 之间', true);
+    if (isNaN(weeks) || weeks < 5 || weeks > 22) return showToast('周报保留周数需在 5-22 之间', true);
+
+    // Bug-99 时空悖论防御:调低保留期限会立即触发数据清理(不可恢复)。
+    // Config 修改已被移除出 undo 栈,必须靠这里的前置确认兜底。
+    const loweringDays = days < prevDays;
+    const loweringWeeks = weeks < prevWeeks;
+    if (loweringDays || loweringWeeks) {
+      const lines = [];
+      if (loweringDays) lines.push(`• 任务保留: ${prevDays} 天 → ${days} 天(旧任务将被立即删除)`);
+      if (loweringWeeks) lines.push(`• 周报保留: ${prevWeeks} 周 → ${weeks} 周(旧周报将被立即删除)`);
+      const ok = window.confirm(
+        '调低保留期限将立即清理对应数据,且无法撤回。\n\n' +
+        lines.join('\n') + '\n\n是否继续?'
+      );
+      if (!ok) return;
+    }
+
+    try {
+      const hkRes = await _api.hotkey.set(currentKey);
+      // Bug-快捷键注册失败静默吞噬修复:后端返回 {ok:false, error} 时不抛异常,必须手动检查
+      if (hkRes && hkRes.ok === false) {
+        showToast('❌ 保存失败: ' + (hkRes.error || '快捷键无效'), true);
+        return;
+      }
+      await _api.config.update({
+        taskRetentionDays: days,
+        reportRetentionWeeks: weeks,
+        dailyReminderEnabled: !!inputReminderEnabled.checked,
+        dailyReminderHour: parseInt((inputReminderTime.value || '17:00').split(':')[0], 10) || 0,
+        dailyReminderMinute: parseInt((inputReminderTime.value || '17:00').split(':')[1], 10) || 0,
+      });
+      showToast('✅ 设置已保存生效');
+      prevDays = days;
+      prevWeeks = weeks;
+      setTimeout(() => dismissSettingsWindow(), 800);
+    } catch (e) {
+      showToast('❌ 保存失败: ' + e.message, true);
+    }
+  });
+
+  async function dismissSettingsWindow() {
+    try {
+      if (_api && _api.window && _api.window.hide) {
+        await _api.window.hide();
+      } else if (window.__TAURI__ && window.__TAURI__.window) {
+        await window.__TAURI__.window.getCurrentWindow().hide();
+      }
+    } catch (e) {
+      console.warn('Failed to hide settings window:', e);
+    }
+  }
+
+  document.getElementById('cancelBtn').addEventListener('click', () => dismissSettingsWindow());
+
+  loadCurrent();
+</script>
+</body>
+</html>

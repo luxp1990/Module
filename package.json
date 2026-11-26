@@ -1,0 +1,80 @@
+{
+    "name": "task-manager",
+    "version": "2.1.8",
+    "description": "Module - 任务管理器",
+    "author": "",
+    "license": "MIT",
+    "private": true,
+    "main": "src/main/main.js",
+    "scripts": {
+        "start": "electron .",
+        "test:audit": "node --test tests/audit-regression.cjs tests/audit-compat.cjs && node tests/audit-ui-launch.cjs && cargo test --manifest-path src-tauri/Cargo.toml --lib --offline",
+        "mcp": "node mcp-server/server.js",
+        "tauri:dev": "tauri dev",
+        "tauri:build": "tauri build",
+        "build:win": "electron-builder --win --x64",
+        "build:dir": "electron-builder --win --x64 --dir",
+        "build:win2": "node node_modules/electron-builder/cli.js --win --x64",
+        "postinstall": "electron-builder install-app-deps"
+    },
+    "dependencies": {
+        "exceljs": "^4.4.0",
+        "morphdom": "^2.7.8"
+    },
+    "devDependencies": {
+        "@tauri-apps/cli": "^2.12.4",
+        "electron": "^33.4.11",
+        "electron-builder": "^25.1.8"
+    },
+    "build": {
+        "appId": "com.module.taskmanager",
+        "productName": "Module",
+        "directories": {
+            "output": "dist"
+        },
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "publish": null,
+            "signAndEditExecutable": false
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true
+        },
+        "electronLanguages": [
+            "zh-CN",
+            "en-US"
+        ],
+        "extraFiles": [
+            "README.md"
+        ],
+        "files": [
+            "src/**/*",
+            "mcp-server/**/*",
+            "package.json",
+            "README.md",
+            "!**/node_modules/**/*.map",
+            "!**/node_modules/**/test/**",
+            "!**/node_modules/**/tests/**",
+            "!**/node_modules/**/*.md",
+            "!**/node_modules/**/*.ts"
+        ],
+        "asar": true,
+        "compression": "normal",
+        "removePackageScripts": true
+    }
+}
