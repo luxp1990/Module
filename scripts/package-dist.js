@@ -8,6 +8,7 @@ const srcExe = path.join(base, `src-tauri/target/release/bundle/nsis/Module_${ve
 const dist = path.join(base, 'dist');
 const targetExe = path.join(dist, `Module Setup ${version}.exe`);
 
+fs.mkdirSync(dist, { recursive: true });
 fs.copyFileSync(srcExe, targetExe);
 console.log('Copied to:', targetExe);
 
