@@ -473,6 +473,8 @@
                   message: _t('ai.apiKeyMissingConfirm', null, '尚未配置 AI API Key，是否立即打开设置进行配置？', 'AI API Key is not configured. Open Settings now?'),
                 });
                 if (ok) window.api?.app?.openSettings?.();
+              } else if (msg.includes('ERR_INPUT_TOO_LARGE')) {
+                window.ModuleApp.Toast?.show(_t('ai.inputTooLargeReport', null, '周报内容过长，请缩小范围后再试', 'Report content is too large; please narrow the scope and try again'), 'error');
               } else {
                 window.ModuleApp.Toast?.show(_t('reports.aiFailed', { error: err?.message || err }, 'AI 周报生成失败: ' + (err?.message || err), 'AI report generation failed: ' + (err?.message || err)), 'error');
               }
