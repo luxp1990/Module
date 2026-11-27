@@ -569,8 +569,8 @@
       return tr(
         'settings.aiErrApiKeyMissing',
         null,
-        '请先填写 API Key（Ollama 本地模式可留空）',
-        'Please enter an API Key first (optional for local Ollama)'
+        '请先填写 API Key（Ollama / 自定义本地模式可留空）',
+        'Please enter an API Key first (optional for Ollama / Custom)'
       );
     }
     if (/\b(401|403)\b/.test(lower) || lower.includes('unauthorized') || lower.includes('forbidden') || lower.includes('invalid api key')) {
@@ -673,6 +673,13 @@
         null,
         '本地 Ollama 通常无需 API Key（可选）',
         'Optional for local Ollama'
+      );
+    } else if (selectAiProvider.value === 'custom') {
+      inputAiApiKey.placeholder = tr(
+        'settings.aiApiKeyOptionalCustom',
+        null,
+        '输入 API Key（本地/无鉴权接口可留空）',
+        'Enter API Key (optional for local/no-auth endpoints)'
       );
     } else {
       inputAiApiKey.placeholder = tr(
