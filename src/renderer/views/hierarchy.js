@@ -313,8 +313,12 @@
         try {
           const result = await window.api.ai.breakdownTask(task.id, instruction, maxTasks, _locale());
           if (token !== modal._aiReqToken || modal.hidden) return;
+          const rawItems = Array.isArray(result) ? result : (Array.isArray(result?.items) ? result.items : []);
+          const droppedCount = Number.isFinite(result?.droppedCount)
+            ? result.droppedCount
+            : (Number.isFinite(result?.totalBeforeCap) ? Math.max(0, result.totalBeforeCap - rawItems.length) : 0);
           const rootContentTrimmed = String(task.content || '').trim();
-          generatedFlat = _flattenGeneratedItems(result, task.id).filter(
+          generatedFlat = _flattenGeneratedItems(rawItems, task.id).filter(
             item => String(item.content || '').trim() !== rootContentTrimmed
           );
           if (generatedFlat.length === 0) {
@@ -326,7 +330,7 @@
             return;
           }
           if (truncateNotice) {
-            if (generatedFlat.length >= maxTasks) {
+            if (droppedCount > 0) {
               truncateNotice.textContent = `⚠️ ${_t('breakdown.truncatedNotice', { max: maxTasks }, `已按上限最多保留 ${maxTasks} 条，可调整上限或补充要求后重新生成`, `Kept up to ${maxTasks} subtasks per limit; adjust the limit or add instructions and regenerate`)}`;
               truncateNotice.hidden = false;
             } else {
@@ -344,6 +348,8 @@
               message: _t('ai.apiKeyMissingConfirm', null, '尚未配置 AI API Key，是否立即打开设置进行配置？', 'AI API Key is not configured. Open Settings now?'),
             });
             if (ok) window.api?.app?.openSettings?.();
+          } else if (msg.includes('ERR_INPUT_TOO_LARGE')) {
+            window.ModuleApp.Toast?.show(_t('ai.inputTooLargeBreakdown', null, '任务内容或备注过长，请精简后再试', 'Task content or notes are too large; please shorten and try again'), 'error');
           } else {
             window.ModuleApp.Toast?.show(_t('breakdown.failed', { error: err?.message || err }, 'AI 任务拆解失败: ' + (err?.message || err), 'AI task breakdown failed: ' + (err?.message || err)), 'error');
           }
