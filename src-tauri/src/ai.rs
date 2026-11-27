@@ -654,20 +654,37 @@ pub fn extract_json_str(raw: &str) -> &str {
     if let Some(after_open) = strip_markdown_fence(trimmed) {
         return after_open;
     }
-    let obj_span = trimmed.find('{').zip(trimmed.rfind('}')).filter(|(s, e)| s < e);
-    let arr_span = trimmed.find('[').zip(trimmed.rfind(']')).filter(|(s, e)| s < e);
-    match (obj_span, arr_span) {
-        (Some((os, oe)), Some((as_, ae))) => {
-            if os < as_ {
-                trimmed[os..=oe].trim()
-            } else {
-                trimmed[as_..=ae].trim()
+    let Some(start) = trimmed.find(|c| c == '{' || c == '[') else {
+        return trimmed;
+    };
+    let mut depth: usize = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (rel_idx, ch) in trimmed[start..].char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
             }
+            continue;
         }
-        (Some((os, oe)), None) => trimmed[os..=oe].trim(),
-        (None, Some((as_, ae))) => trimmed[as_..=ae].trim(),
-        (None, None) => trimmed,
+        match ch {
+            '"' => in_string = true,
+            '{' | '[' => depth += 1,
+            '}' | ']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let end = start + rel_idx + ch.len_utf8();
+                    return trimmed[start..end].trim();
+                }
+            }
+            _ => {}
+        }
     }
+    trimmed[start..].trim()
 }
 
 fn strip_markdown_fence(input: &str) -> Option<&str> {
@@ -675,7 +692,7 @@ fn strip_markdown_fence(input: &str) -> Option<&str> {
     let after_ticks = &input[fence_start + 3..];
     let header_end = after_ticks.find('\n')?;
     let body = &after_ticks[header_end + 1..];
-    let fence_end = body.rfind("```")?;
+    let fence_end = body.find("```")?;
     Some(body[..fence_end].trim())
 }
 
@@ -756,7 +773,7 @@ fn validate_model_name(provider: AiProvider, model: &str) -> Result<(), String> 
 
 fn require_api_key_and_base_url<'a>(config: &'a AiConfig) -> Result<(&'a str, String), String> {
     let api_key = config.api_key.trim();
-    if api_key.is_empty() && config.provider != AiProvider::Ollama {
+    if api_key.is_empty() && !matches!(config.provider, AiProvider::Ollama | AiProvider::Custom) {
         return Err("ERR_API_KEY_MISSING".to_string());
     }
     let base_url = config.effective_base_url();
@@ -1230,6 +1247,14 @@ mod tests {
         };
         assert!(require_api_key_and_base_url(&ollama_no_key).is_ok());
 
+        let custom_no_key = AiConfig {
+            provider: AiProvider::Custom,
+            api_key: String::new(),
+            base_url: "http://localhost:1234/v1".to_string(),
+            ..AiConfig::default()
+        };
+        assert!(require_api_key_and_base_url(&custom_no_key).is_ok());
+
         let unknown_provider: AiProvider = serde_json::from_str("\"some_unknown_provider\"").unwrap();
         assert_eq!(unknown_provider, AiProvider::Custom);
     }
@@ -1386,6 +1411,32 @@ Hope this helps!"#;
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].content, "Check item [1]");
         assert_eq!(tasks[0].priority.as_deref(), Some("p1"));
+    }
+
+    #[test]
+    fn multiple_fences_and_trailing_annotations_parse_correctly() {
+        let multi_fence = r#"Here is the plan:
+```json
+[{"content": "First block task"}]
+```
+Notes:
+```json
+[{"content": "Second block task"}]
+```"#;
+        let tasks = parse_generated_tasks(multi_fence).expect("parse first fenced block");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].content, "First block task");
+
+        let trailing_footnote = r#"Here are the tasks:
+[{"content": "Item with \"quoted [braces]\" and \\ slash", "priority": "high"}] [1]
+[1] Reference note."#;
+        let footnote_tasks =
+            parse_generated_tasks(trailing_footnote).expect("parse json with trailing footnote");
+        assert_eq!(footnote_tasks.len(), 1);
+        assert_eq!(
+            footnote_tasks[0].content,
+            r#"Item with "quoted [braces]" and \ slash"#
+        );
     }
 
     #[test]
