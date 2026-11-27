@@ -410,7 +410,7 @@
 
   const DEFAULT_PROMPTS = {
     weeklyReport: 'You are a concise, structured work-report assistant. Summarize the completed tasks into a clear weekly report grouped by theme or project, highlighting key outcomes and next steps. Respond in the requested language (Chinese if "zh"/Chinese, otherwise English).',
-    taskBreakdown: 'You are an expert project planner. Break down the given task into concrete, actionable subtasks respecting the requested maximum nesting depth. Respond in the requested language (Chinese if "zh"/Chinese, otherwise English).',
+    taskBreakdown: 'You are an expert project planner. Based on the task title, task description/notes, and any extra instruction, decide if the task genuinely benefits from decomposition. If it has clear multi-step scope, break it down into concrete, actionable subtasks within the requested maximum task count and nesting depth. Output ONLY the subtasks; NEVER repeat or wrap the target parent task itself as a node. If the task is already atomic, trivial, or lacks enough context/description (e.g., a vague short noun with no notes or instructions), DO NOT force a breakdown—return an empty array [] instead of inventing filler steps. Respond in the requested language (Chinese if "zh"/Chinese, otherwise English).',
     notesToTasks: 'You are an expert productivity assistant. Extract actionable tasks, priorities, and any implied dates from the provided note content. Respond in the requested language (Chinese if "zh"/Chinese, otherwise English).'
   };
 
@@ -531,6 +531,10 @@
   function updateProviderDefaults(providerKey, opts = {}) {
     const key = AI_PROVIDER_PRESETS[providerKey] ? providerKey : 'openai';
     const preset = AI_PROVIDER_PRESETS[key];
+    if (opts.resetValues) {
+      inputAiBaseUrl.value = preset.baseUrl || '';
+      inputAiModel.value = preset.defaultModel || '';
+    }
     if (preset.baseUrl) {
       inputAiBaseUrl.placeholder = tr(
         'settings.aiBaseUrlDefault',
@@ -755,6 +759,11 @@
 
   function applyAiConfigToForm(aiCfg) {
     if (!aiCfg) return;
+    if (aiCfg.defaultPrompts) {
+      if (aiCfg.defaultPrompts.weeklyReport) DEFAULT_PROMPTS.weeklyReport = aiCfg.defaultPrompts.weeklyReport;
+      if (aiCfg.defaultPrompts.taskBreakdown) DEFAULT_PROMPTS.taskBreakdown = aiCfg.defaultPrompts.taskBreakdown;
+      if (aiCfg.defaultPrompts.notesToTasks) DEFAULT_PROMPTS.notesToTasks = aiCfg.defaultPrompts.notesToTasks;
+    }
     selectAiProvider.value = AI_PROVIDER_PRESETS[aiCfg.provider] ? aiCfg.provider : (aiCfg.provider || 'openai');
     aiHasApiKey = !!aiCfg.hasApiKey;
     aiApiKeyMasked = aiCfg.apiKeyMasked || '';
@@ -913,7 +922,7 @@
 
   // AI 服务商切换联动默认值与推荐模型
   selectAiProvider.addEventListener('change', () => {
-    updateProviderDefaults(selectAiProvider.value);
+    updateProviderDefaults(selectAiProvider.value, { resetValues: true });
   });
 
   // AI 拉取线上模型列表
