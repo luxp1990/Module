@@ -149,6 +149,7 @@ impl AiConfig {
             effective_base_url: self.effective_base_url(),
             effective_model: self.effective_model(),
             prompts: self.prompts.clone(),
+            default_prompts: AiPrompts::default(),
         }
     }
 
@@ -193,6 +194,7 @@ pub struct AiConfigPublic {
     pub effective_base_url: String,
     pub effective_model: String,
     pub prompts: AiPrompts,
+    pub default_prompts: AiPrompts,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,9 +213,19 @@ pub struct AiConfigInput {
     pub prompts: Option<AiPrompts>,
 }
 
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedTaskItem {
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub content: String,
     #[serde(default)]
     pub priority: Option<String>,
@@ -221,7 +233,7 @@ pub struct GeneratedTaskItem {
     pub start_date: Option<String>,
     #[serde(default)]
     pub deadline: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub children: Vec<GeneratedTaskItem>,
 }
 
@@ -806,15 +818,7 @@ async fn call_llm(
                 .await
                 .map_err(|e| sanitize_error_message(&format!("Gemini request failed: {e}"), api_key))?;
 
-            let status = resp.status();
-            let payload: Value = resp
-                .json()
-                .await
-                .map_err(|e| sanitize_error_message(&format!("Failed to read Gemini response ({status}): {e}"), api_key))?;
-
-            if !status.is_success() {
-                return Err(format_api_error(status.as_u16(), &payload, api_key));
-            }
+            let payload = read_json_response(resp, "Gemini", api_key).await?;
 
             let parts = payload
                 .pointer("/candidates/0/content/parts")
@@ -854,15 +858,7 @@ async fn call_llm(
                 .await
                 .map_err(|e| sanitize_error_message(&format!("Anthropic request failed: {e}"), api_key))?;
 
-            let status = resp.status();
-            let payload: Value = resp
-                .json()
-                .await
-                .map_err(|e| sanitize_error_message(&format!("Failed to read Anthropic response ({status}): {e}"), api_key))?;
-
-            if !status.is_success() {
-                return Err(format_api_error(status.as_u16(), &payload, api_key));
-            }
+            let payload = read_json_response(resp, "Anthropic", api_key).await?;
 
             let parts = payload
                 .get("content")
@@ -910,15 +906,7 @@ async fn call_llm(
                 .await
                 .map_err(|e| sanitize_error_message(&format!("AI request failed: {e}"), api_key))?;
 
-            let status = resp.status();
-            let payload: Value = resp
-                .json()
-                .await
-                .map_err(|e| sanitize_error_message(&format!("Failed to read AI response ({status}): {e}"), api_key))?;
-
-            if !status.is_success() {
-                return Err(format_api_error(status.as_u16(), &payload, api_key));
-            }
+            let payload = read_json_response(resp, "AI", api_key).await?;
 
             payload
                 .pointer("/choices/0/message/content")
@@ -957,15 +945,7 @@ pub async fn list_models(config: &AiConfig) -> Result<Vec<String>, String> {
         .await
         .map_err(|e| sanitize_error_message(&format!("Failed to fetch models: {e}"), api_key))?;
 
-    let status = resp.status();
-    let payload: Value = resp
-        .json()
-        .await
-        .map_err(|e| sanitize_error_message(&format!("Failed to read models response ({status}): {e}"), api_key))?;
-
-    if !status.is_success() {
-        return Err(format_api_error(status.as_u16(), &payload, api_key));
-    }
+    let payload = read_json_response(resp, "models", api_key).await?;
 
     let mut models: Vec<String> = match config.provider {
         AiProvider::Gemini => payload
@@ -1007,13 +987,57 @@ pub async fn list_models(config: &AiConfig) -> Result<Vec<String>, String> {
     Ok(models)
 }
 
-fn format_api_error(status: u16, payload: &Value, api_key: &str) -> String {
-    let msg = payload
-        .pointer("/error/message")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .unwrap_or_else(|| payload.to_string());
-    let sanitized = sanitize_error_message(&msg, api_key);
+async fn read_json_response(
+    resp: reqwest::Response,
+    label: &str,
+    api_key: &str,
+) -> Result<Value, String> {
+    let status = resp.status();
+    if !status.is_success() {
+        let body_text = match resp.text().await {
+            Ok(text) => text,
+            Err(e) => {
+                let err_msg = sanitize_error_message(&format!("{e}"), api_key);
+                let truncated: String = err_msg.chars().take(300).collect();
+                return Err(format!(
+                    "AI API error (HTTP {}): <failed to read response body: {}>",
+                    status.as_u16(),
+                    truncated
+                ));
+            }
+        };
+        return Err(format_api_error_text(status.as_u16(), &body_text, api_key));
+    }
+
+    resp.json()
+        .await
+        .map_err(|e| sanitize_error_message(&format!("Failed to read {label} response ({status}): {e}"), api_key))
+}
+
+fn format_api_error_text(status: u16, body_text: &str, api_key: &str) -> String {
+    let extracted = serde_json::from_str::<Value>(body_text)
+        .ok()
+        .and_then(|payload| {
+            payload
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .or_else(|| payload.get("error").and_then(Value::as_str))
+                .or_else(|| payload.get("message").and_then(Value::as_str))
+                .or_else(|| payload.get("detail").and_then(Value::as_str))
+                .or_else(|| payload.pointer("/0/error/message").and_then(Value::as_str))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
+    let raw_msg = extracted.unwrap_or_else(|| {
+        let trimmed = body_text.trim();
+        if trimmed.is_empty() {
+            "<empty response body>".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    });
+    let sanitized = sanitize_error_message(&raw_msg, api_key);
     let truncated: String = sanitized.chars().take(300).collect();
     format!("AI API error (HTTP {status}): {truncated}")
 }
@@ -1362,6 +1386,33 @@ Hope this helps!"#;
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].content, "Check item [1]");
         assert_eq!(tasks[0].priority.as_deref(), Some("p1"));
+    }
+
+    #[test]
+    fn null_children_and_null_content_are_tolerated() {
+        let raw = r#"[
+            {"content": "Task A", "priority": null, "startDate": null, "deadline": null, "children": null},
+            {"content": null, "children": null}
+        ]"#;
+        let tasks = parse_generated_tasks(raw).expect("parse tasks with null children");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].content, "Task A");
+        assert!(tasks[0].children.is_empty());
+    }
+
+    #[test]
+    fn format_api_error_text_handles_html_json_and_redaction() {
+        let json_err = format_api_error_text(401, r#"{"error":{"message":"Invalid key sk-secret-123"}}"#, "sk-secret-123");
+        assert_eq!(json_err, "AI API error (HTTP 401): Invalid key [REDACTED]");
+
+        let html_body = format!("<html><body>502 Bad Gateway {}</body></html>", "x".repeat(400));
+        let html_err = format_api_error_text(502, &html_body, "sk-secret-123");
+        assert!(html_err.starts_with("AI API error (HTTP 502): <html><body>502 Bad Gateway "));
+        let prefix = "AI API error (HTTP 502): ";
+        assert_eq!(html_err[prefix.len()..].chars().count(), 300);
+
+        let empty_err = format_api_error_text(503, "   ", "");
+        assert_eq!(empty_err, "AI API error (HTTP 503): <empty response body>");
     }
 
     #[test]
