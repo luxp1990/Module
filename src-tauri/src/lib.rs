@@ -4,6 +4,7 @@ pub mod commands;
 pub mod mcp;
 pub mod xlsx_gantt;
 mod image_save;
+mod ai;
 
 use chrono::Local;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -18,6 +19,73 @@ use crate::commands::*;
 use crate::store::DataStore;
 
 static LAST_WIDGET_MOVE_TICK: AtomicI64 = AtomicI64::new(0);
+
+pub struct TrayMenuItems {
+    pub show: MenuItem<tauri::Wry>,
+    pub widget: MenuItem<tauri::Wry>,
+    pub settings: MenuItem<tauri::Wry>,
+    pub quit: MenuItem<tauri::Wry>,
+}
+
+pub struct TrayMenuState(pub Mutex<Option<TrayMenuItems>>);
+
+pub fn resolve_tray_language(lang: &str) -> &'static str {
+    let trimmed = lang.trim();
+    if trimmed == "en-US" || trimmed.starts_with("en") {
+        return "en-US";
+    }
+    if trimmed == "zh-CN" || trimmed.starts_with("zh") {
+        return "zh-CN";
+    }
+
+    for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+        if let Ok(val) = std::env::var(var) {
+            let lower = val.to_lowercase();
+            if lower.starts_with("zh") {
+                return "zh-CN";
+            }
+            if lower.starts_with("en") {
+                return "en-US";
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        unsafe extern "system" {
+            fn GetUserDefaultUILanguage() -> u16;
+        }
+        let lang_id = unsafe { GetUserDefaultUILanguage() };
+        let primary = lang_id & 0x03ff;
+        if primary == 0x09 {
+            return "en-US";
+        }
+        if primary == 0x04 {
+            return "zh-CN";
+        }
+    }
+
+    "zh-CN"
+}
+
+pub fn update_tray_language(app: &tauri::AppHandle, lang: &str) {
+    let resolved = resolve_tray_language(lang);
+    let (show_text, widget_text, settings_text, quit_text) = if resolved == "en-US" {
+        ("Show Main Window", "Desktop Widget", "⚙️ Settings", "Quit")
+    } else {
+        ("显示主窗口", "桌面组件", "⚙️ 设置", "退出")
+    };
+    if let Some(state) = app.try_state::<TrayMenuState>() {
+        if let Ok(guard) = state.0.lock() {
+            if let Some(items) = guard.as_ref() {
+                let _ = items.show.set_text(show_text);
+                let _ = items.widget.set_text(widget_text);
+                let _ = items.settings.set_text(settings_text);
+                let _ = items.quit.set_text(quit_text);
+            }
+        }
+    }
+}
 
 fn handle_widget_bounds_changed(window: &tauri::Window) {
     if window.label() != "widget" { return; }
@@ -40,6 +108,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(store.clone())
+        .manage(TrayMenuState(Mutex::new(None)))
         .setup(move |app| {
             // Setup Tray Icon & Menu
             let show_i = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
@@ -49,6 +118,20 @@ pub fn run() {
             let sep2 = PredefinedMenuItem::separator(app)?;
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &widget_i, &sep1, &settings_i, &sep2, &quit_i])?;
+
+            if let Ok(mut guard) = app.state::<TrayMenuState>().0.lock() {
+                *guard = Some(TrayMenuItems {
+                    show: show_i.clone(),
+                    widget: widget_i.clone(),
+                    settings: settings_i.clone(),
+                    quit: quit_i.clone(),
+                });
+            }
+            let initial_lang = store
+                .lock()
+                .map(|s| s.get_config().language)
+                .unwrap_or_else(|_| "auto".to_string());
+            update_tray_language(app.handle(), &initial_lang);
 
             if let Some(icon) = app.default_window_icon() {
                 let _tray = TrayIconBuilder::new()
@@ -71,11 +154,7 @@ pub fn run() {
                             let _ = crate::commands::widget_toggle(app.clone());
                         }
                         "settings" => {
-                            if let Some(w) = app.get_webview_window("settings") {
-                                let _ = w.show();
-                                let _ = w.unminimize();
-                                let _ = w.set_focus();
-                            }
+                            crate::commands::app_open_settings(app.clone());
                         }
                         _ => {}
                     })
@@ -275,6 +354,15 @@ pub fn run() {
             reminder_focus_task,
             window_hide,
             app_version,
+            app_update_tray_language,
+            app_open_settings,
+            ai_get_config,
+            ai_save_config,
+            ai_test_connection,
+            ai_list_models,
+            ai_generate_weekly_report,
+            ai_breakdown_task,
+            ai_notes_to_tasks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Module application");

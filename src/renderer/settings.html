@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-i18n-doc-title="settings.docTitle">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>系统设置</title>
+<title data-i18n="settings.docTitle">设置 - 任务管理器</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -13,19 +13,19 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 24px 20px;
-    height: 100vh;
+    padding: 24px 20px 36px;
+    min-height: 100vh;
     user-select: none;
     overflow-y: auto;
   }
-  h2 { font-size: 18px; margin-bottom: 24px; color: #f1f5f9; width: 100%; text-align: center; }
+  h2 { font-size: 18px; margin-bottom: 20px; color: #f1f5f9; width: 100%; text-align: center; }
 
   .setting-group {
     background: #0f172a;
     border: 1px solid #334155;
     border-radius: 12px;
     padding: 20px;
-    width: 360px;
+    width: min(400px, 100%);
     margin-bottom: 16px;
   }
   .group-title {
@@ -33,6 +33,7 @@
     color: #94a3b8;
     margin-bottom: 16px;
     text-align: center;
+    font-weight: 600;
   }
 
   /* 快捷键区域 */
@@ -56,25 +57,30 @@
     0%, 100% { box-shadow: 0 0 4px rgba(245,158,11,0.3); }
     50% { box-shadow: 0 0 16px rgba(245,158,11,0.5); }
   }
-  .hint { font-size: 12px; color: #64748b; margin-top: 10px; text-align: center; }
+  .hint { font-size: 12px; color: #64748b; margin-top: 10px; text-align: center; line-height: 1.4; }
 
   /* 参数配置区域 */
   .field {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
     margin-bottom: 14px;
   }
   .field:last-child { margin-bottom: 0; }
-  .field label { font-size: 13px; color: #cbd5e1; }
-  .field input {
-    width: 70px;
+  .field label { font-size: 13px; color: #cbd5e1; flex-shrink: 0; }
+  .field input,
+  .field select {
     background: #1e293b;
     border: 1px solid #475569;
     color: #e2e8f0;
     padding: 6px 8px;
     border-radius: 6px;
     outline: none;
+    font-size: 13px;
+  }
+  .field input[type="number"] {
+    width: 74px;
     text-align: center;
     font-family: monospace;
     font-size: 14px;
@@ -83,16 +89,168 @@
     width: 18px;
     height: 18px;
     accent-color: #6366f1;
+    cursor: pointer;
   }
   .field input[type="time"] {
-    width: 110px;
+    width: 114px;
+    text-align: left;
+    font-family: monospace;
+    font-size: 13px;
+  }
+  .field input[type="text"],
+  .field input[type="password"],
+  .field select {
+    width: 220px;
+    max-width: 100%;
     text-align: left;
   }
-  .field input:focus { border-color: #6366f1; }
+  .model-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 220px;
+    max-width: 100%;
+  }
+  .model-input-wrap input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+  .model-fetch-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 5px 8px;
+  }
+  .field input:focus,
+  .field select:focus,
+  .prompt-block textarea:focus {
+    border-color: #6366f1;
+  }
 
-  .btn-row { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+  /* AI 测试连接与高级提示词 */
+  .ai-actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .ai-actions > .btn {
+    flex-shrink: 0;
+  }
+  .ai-test-status {
+    font-size: 12px;
+    color: #94a3b8;
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    overflow: visible;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .ai-test-status.ok { color: #4ade80; }
+  .ai-test-status.err { color: #f87171; }
+  .ai-err-details {
+    margin-top: 6px;
+    text-align: left;
+    font-size: 11px;
+    color: #cbd5e1;
+  }
+  .ai-err-details > summary {
+    cursor: pointer;
+    color: #94a3b8;
+    user-select: none;
+  }
+  .ai-err-details > pre {
+    margin: 6px 0;
+    padding: 6px 8px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 140px;
+    overflow: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    color: #fca5a5;
+  }
+
+  details.advanced-prompts {
+    margin-top: 14px;
+    border-top: 1px solid #1e293b;
+    padding-top: 12px;
+  }
+  details.advanced-prompts > summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: #94a3b8;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+  }
+  details.advanced-prompts > summary::-webkit-details-marker { display: none; }
+  details.advanced-prompts > summary::after {
+    content: '▸';
+    font-size: 12px;
+    color: #64748b;
+    transition: transform 0.15s;
+  }
+  details.advanced-prompts[open] > summary::after {
+    transform: rotate(90deg);
+  }
+  .prompts-note {
+    font-size: 11px;
+    color: #94a3b8;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 10px 0 12px;
+    line-height: 1.45;
+  }
+  .prompt-block {
+    margin-bottom: 12px;
+  }
+  .prompt-block:last-child {
+    margin-bottom: 0;
+  }
+  .prompt-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .prompt-header label {
+    font-size: 12px;
+    color: #cbd5e1;
+    font-weight: 500;
+  }
+  .prompt-block textarea {
+    width: 100%;
+    min-height: 68px;
+    resize: vertical;
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: #e2e8f0;
+    border-radius: 6px;
+    padding: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.45;
+    outline: none;
+    user-select: text;
+  }
+
+  .btn-row { display: flex; gap: 10px; justify-content: center; margin-top: 6px; margin-bottom: 10px; }
   .btn { padding: 8px 24px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity 0.15s; }
   .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-xs { padding: 3px 8px; font-size: 11px; font-weight: 500; }
   .btn-primary { background: #6366f1; color: #fff; }
   .btn-secondary { background: #334155; color: #cbd5e1; }
 
@@ -100,6 +258,8 @@
     position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
     background: #22c55e; color: #fff; padding: 10px 24px; border-radius: 8px;
     font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100;
+    max-width: 90%;
+    text-align: center;
   }
   .toast.error { background: #ef4444; }
   .toast.show { opacity: 1; }
@@ -107,68 +267,243 @@
 </head>
 <body>
 
-<h2>⚙️ 全局设置</h2>
+<h2><span aria-hidden="true">⚙️ </span><span data-i18n="settings.title">应用设置</span></h2>
 
 <div class="setting-group">
-  <div class="group-title">桌面组件快捷键</div>
-  <div class="key-display" id="keyDisplay" title="点击后按下新的组合键">
+  <div class="group-title" data-i18n="settings.languageLabel">界面语言</div>
+  <div class="field">
+    <label for="languageSelect" data-i18n="settings.languageLabel">界面语言</label>
+    <select id="languageSelect">
+      <option value="auto" data-i18n="settings.languageAuto">跟随系统</option>
+      <option value="zh-CN" data-i18n="settings.languageZhCN">简体中文</option>
+      <option value="en-US" data-i18n="settings.languageEnUS">English</option>
+    </select>
+  </div>
+</div>
+
+<div class="setting-group">
+  <div class="group-title" data-i18n="settings.hotkeyLabel">全局快捷键</div>
+  <div class="key-display" id="keyDisplay" data-i18n-title="settings.hotkeyHint" title="用于快速唤起或隐藏主窗口">
     <span id="keyText">Ctrl+Shift+M</span>
   </div>
   <p class="hint" id="keyHint">点击框内，然后按下新的组合键</p>
 </div>
 
 <div class="setting-group">
-  <div class="group-title">数据保留策略</div>
+  <div class="group-title" data-i18n="settings.generalSection">通用设置</div>
   <div class="field">
-    <label>已完成任务清理 (30 - 180天)</label>
+    <label for="taskDays" id="taskDaysLabel">已完成任务清理 (30 - 180天)</label>
     <input type="number" id="taskDays" min="30" max="180" />
   </div>
   <div class="field">
-    <label>历史周报保留 (5 - 22周)</label>
+    <label for="reportWeeks" id="reportWeeksLabel">历史周报保留 (5 - 22周)</label>
     <input type="number" id="reportWeeks" min="5" max="22" />
   </div>
 </div>
 
 <div class="setting-group">
-  <div class="group-title">每日任务提醒</div>
+  <div class="group-title" data-i18n="settings.reminderSection">每日提醒</div>
   <div class="field">
-    <label>启用提醒</label>
+    <label for="reminderEnabled" data-i18n="settings.reminderEnable">开启每日任务提醒</label>
     <input type="checkbox" id="reminderEnabled" />
   </div>
   <div class="field">
-    <label>提醒时间（本地）</label>
+    <label for="reminderTime" data-i18n="settings.reminderTimeLabel">提醒时间</label>
     <input type="time" id="reminderTime" value="17:00" />
   </div>
-  <p class="hint">到点弹出摘要通知 + 任务列表窗；错过则唤醒后补一次</p>
+  <p class="hint" id="reminderHint">到点弹出摘要通知 + 任务列表窗；错过则唤醒后补一次</p>
+</div>
+
+<div class="setting-group">
+  <div class="group-title" data-i18n="settings.aiSection">AI 助手配置</div>
+  <div class="field">
+    <label for="aiProvider" data-i18n="settings.aiProvider">服务商</label>
+    <select id="aiProvider">
+      <option value="openai" data-i18n="settings.aiProviderOpenAI">OpenAI</option>
+      <option value="deepseek" data-i18n="settings.aiProviderDeepSeek">DeepSeek</option>
+      <option value="gemini" data-i18n="settings.aiProviderGemini">Google Gemini</option>
+      <option value="anthropic">Anthropic Claude</option>
+      <option value="siliconflow">硅基流动 SiliconFlow</option>
+      <option value="qwen">通义千问 DashScope</option>
+      <option value="moonshot">Kimi / Moonshot</option>
+      <option value="zhipu">智谱 GLM</option>
+      <option value="ollama">Ollama 本地</option>
+      <option value="custom">自定义 OpenAI 兼容</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="aiApiKey" data-i18n="settings.aiApiKey">API Key</label>
+    <input type="password" id="aiApiKey" autocomplete="off" data-i18n-placeholder="settings.aiApiKeyPlaceholder" placeholder="输入 API Key（安全存储在本地）" />
+  </div>
+  <div class="field">
+    <label for="aiBaseUrl" data-i18n="settings.aiBaseUrl">Base URL</label>
+    <input type="text" id="aiBaseUrl" data-i18n-placeholder="settings.aiBaseUrlPlaceholder" placeholder="可选，自定义接口地址" />
+  </div>
+  <div class="field">
+    <label for="aiModel" data-i18n="settings.aiModel">模型名称</label>
+    <div class="model-input-wrap">
+      <input type="text" id="aiModel" list="aiModelSuggestions" data-i18n-placeholder="settings.aiModelPlaceholder" placeholder="例如：gpt-4o-mini / deepseek-chat / gemini-2.5-flash" />
+      <button type="button" class="btn btn-secondary btn-xs model-fetch-btn" id="fetchModelsBtn">拉取模型</button>
+    </div>
+    <datalist id="aiModelSuggestions"></datalist>
+  </div>
+  <div class="ai-actions">
+    <button type="button" class="btn btn-secondary btn-sm" id="testAiBtn" data-i18n="settings.aiTestConnection">测试连接</button>
+    <span class="ai-test-status" id="aiTestStatus"></span>
+  </div>
+
+  <details class="advanced-prompts">
+    <summary data-i18n="settings.aiAdvancedPrompts">高级提示词设置</summary>
+    <div class="prompts-note" id="promptsJsonNote">
+      注意：任务拆解与备忘录转任务的 JSON 输出格式由后端自动强制约束，无需在提示词中重复编写结构化格式要求。
+    </div>
+    <div class="prompt-block">
+      <div class="prompt-header">
+        <label for="promptWeeklyReport" data-i18n="settings.aiPromptWeeklyReport">周报总结提示词</label>
+        <button type="button" class="btn btn-secondary btn-xs reset-prompt-btn" data-prompt-key="weeklyReport" data-i18n="common.resetDefault">恢复默认</button>
+      </div>
+      <textarea id="promptWeeklyReport" rows="3"></textarea>
+    </div>
+    <div class="prompt-block">
+      <div class="prompt-header">
+        <label for="promptTaskBreakdown" data-i18n="settings.aiPromptBreakdown">任务拆解提示词</label>
+        <button type="button" class="btn btn-secondary btn-xs reset-prompt-btn" data-prompt-key="taskBreakdown" data-i18n="common.resetDefault">恢复默认</button>
+      </div>
+      <textarea id="promptTaskBreakdown" rows="3"></textarea>
+    </div>
+    <div class="prompt-block">
+      <div class="prompt-header">
+        <label for="promptNotesToTasks" data-i18n="settings.aiPromptNotesToTasks">备忘录转任务提示词</label>
+        <button type="button" class="btn btn-secondary btn-xs reset-prompt-btn" data-prompt-key="notesToTasks" data-i18n="common.resetDefault">恢复默认</button>
+      </div>
+      <textarea id="promptNotesToTasks" rows="3"></textarea>
+    </div>
+  </details>
 </div>
 
 <div class="btn-row">
-  <button class="btn btn-secondary" id="cancelBtn">取消</button>
-  <button class="btn btn-primary" id="saveBtn">保存全部</button>
+  <button class="btn btn-secondary" id="cancelBtn" data-i18n="common.cancel">取消</button>
+  <button class="btn btn-primary" id="saveBtn" data-i18n="settings.saveSettings">保存设置</button>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script src="api-bridge.js"></script>
+<script src="i18n.js"></script>
 <script>
   const _api = window.api;
+  const I18n = window.ModuleApp && window.ModuleApp.I18n;
+
+  function tr(key, params, fallbackZh, fallbackEn) {
+    if (I18n && typeof I18n.hasKey === 'function' && I18n.hasKey(key)) {
+      return I18n.t(key, params);
+    }
+    const locale = I18n && typeof I18n.getLocale === 'function' ? I18n.getLocale() : 'zh-CN';
+    let text = locale === 'en-US' ? (fallbackEn || fallbackZh || key) : (fallbackZh || key);
+    if (params && typeof params === 'object') {
+      text = text.replace(/\{(\w+)\}/g, (m, k) => (
+        params[k] !== undefined && params[k] !== null ? String(params[k]) : m
+      ));
+    }
+    return text;
+  }
+
+  const DEFAULT_PROMPTS = {
+    weeklyReport: 'You are a concise, structured work-report assistant. Summarize the completed tasks into a clear weekly report grouped by theme or project, highlighting key outcomes and next steps. Respond in the requested language (Chinese if "zh"/Chinese, otherwise English).',
+    taskBreakdown: 'You are an expert project planner. Break down the given task into concrete, actionable subtasks respecting the requested maximum nesting depth. Respond in the requested language (Chinese if "zh"/Chinese, otherwise English).',
+    notesToTasks: 'You are an expert productivity assistant. Extract actionable tasks, priorities, and any implied dates from the provided note content. Respond in the requested language (Chinese if "zh"/Chinese, otherwise English).'
+  };
+
   let currentKey = '';
   let recording = false;
   let toastTimer = null; // Bug-修复 4:Toast 连点竞态——统一句柄,新 Toast 触发时清理旧的
+  let savedLanguageSetting = 'auto';
+  let aiHasApiKey = false;
+  let aiApiKeyMasked = '';
 
   // Bug-99 时空悖论防御:保存确认兜底里要拿旧的保留天数/周数做对比,
   // 提到外层让 saveBtn handler 闭包可见(原本写在 loadCurrent 局部 const,外部读不到)
   let prevDays = 180;
   let prevWeeks = 22;
 
+  const selectLanguage = document.getElementById('languageSelect');
   const keyDisplay = document.getElementById('keyDisplay');
   const keyText = document.getElementById('keyText');
   const keyHint = document.getElementById('keyHint');
   const toast = document.getElementById('toast');
   const inputTaskDays = document.getElementById('taskDays');
   const inputReportWeeks = document.getElementById('reportWeeks');
+  const taskDaysLabel = document.getElementById('taskDaysLabel');
+  const reportWeeksLabel = document.getElementById('reportWeeksLabel');
   const inputReminderEnabled = document.getElementById('reminderEnabled');
   const inputReminderTime = document.getElementById('reminderTime');
+  const reminderHint = document.getElementById('reminderHint');
+
+  const selectAiProvider = document.getElementById('aiProvider');
+  const inputAiApiKey = document.getElementById('aiApiKey');
+  const inputAiBaseUrl = document.getElementById('aiBaseUrl');
+  const inputAiModel = document.getElementById('aiModel');
+  const datalistAiModels = document.getElementById('aiModelSuggestions');
+  const btnFetchModels = document.getElementById('fetchModelsBtn');
+  const btnTestAi = document.getElementById('testAiBtn');
+  const aiTestStatus = document.getElementById('aiTestStatus');
+
+  const AI_PROVIDER_PRESETS = {
+    openai: {
+      baseUrl: 'https://api.openai.com/v1',
+      defaultModel: 'gpt-4o-mini',
+      models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'o4-mini']
+    },
+    deepseek: {
+      baseUrl: 'https://api.deepseek.com/v1',
+      defaultModel: 'deepseek-chat',
+      models: ['deepseek-chat', 'deepseek-reasoner']
+    },
+    gemini: {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+      defaultModel: 'gemini-2.5-flash',
+      models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash']
+    },
+    anthropic: {
+      baseUrl: 'https://api.anthropic.com/v1',
+      defaultModel: 'claude-sonnet-4-5-20250929',
+      models: ['claude-sonnet-4-5-20250929', 'claude-3-7-sonnet-20250219', 'claude-3-5-haiku-20241022']
+    },
+    siliconflow: {
+      baseUrl: 'https://api.siliconflow.cn/v1',
+      defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
+      models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen2.5-7B-Instruct']
+    },
+    qwen: {
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      defaultModel: 'qwen-plus',
+      models: ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-long']
+    },
+    moonshot: {
+      baseUrl: 'https://api.moonshot.cn/v1',
+      defaultModel: 'moonshot-v1-8k',
+      models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-latest']
+    },
+    zhipu: {
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      defaultModel: 'glm-4-flash',
+      models: ['glm-4-flash', 'glm-4-plus', 'glm-4-air', 'glm-z1-flash']
+    },
+    ollama: {
+      baseUrl: 'http://localhost:11434/v1',
+      defaultModel: 'qwen2.5:7b',
+      models: ['qwen2.5:7b', 'llama3.1:8b', 'deepseek-r1:8b', 'gemma3:4b']
+    },
+    custom: {
+      baseUrl: '',
+      defaultModel: 'gpt-4o-mini',
+      models: ['gpt-4o-mini', 'gpt-4o', 'deepseek-chat']
+    }
+  };
+  const promptsJsonNote = document.getElementById('promptsJsonNote');
+  const inputPromptWeekly = document.getElementById('promptWeeklyReport');
+  const inputPromptBreakdown = document.getElementById('promptTaskBreakdown');
+  const inputPromptNotes = document.getElementById('promptNotesToTasks');
 
   // Bug-黑名单:禁止 Ctrl+单字母 防止劫持系统快捷键
   const HOTKEY_BLACKLIST = {
@@ -180,6 +515,275 @@
     'T': true, 'COMMANDORCONTROL': true
   };
 
+  function populateModelSuggestions(models) {
+    datalistAiModels.innerHTML = '';
+    const seen = new Set();
+    (Array.isArray(models) ? models : []).forEach((id) => {
+      const val = typeof id === 'string' ? id.trim() : '';
+      if (!val || seen.has(val)) return;
+      seen.add(val);
+      const opt = document.createElement('option');
+      opt.value = val;
+      datalistAiModels.appendChild(opt);
+    });
+  }
+
+  function updateProviderDefaults(providerKey, opts = {}) {
+    const key = AI_PROVIDER_PRESETS[providerKey] ? providerKey : 'openai';
+    const preset = AI_PROVIDER_PRESETS[key];
+    if (preset.baseUrl) {
+      inputAiBaseUrl.placeholder = tr(
+        'settings.aiBaseUrlDefault',
+        { url: preset.baseUrl },
+        `默认：${preset.baseUrl}`,
+        `Default: ${preset.baseUrl}`
+      );
+    } else {
+      inputAiBaseUrl.placeholder = tr(
+        'settings.aiBaseUrlCustomPlaceholder',
+        null,
+        '输入兼容 OpenAI 的 Base URL（如 https://.../v1）',
+        'Enter OpenAI-compatible Base URL (e.g. https://.../v1)'
+      );
+    }
+    inputAiModel.placeholder = tr(
+      'settings.aiModelDefault',
+      { model: preset.defaultModel },
+      `默认：${preset.defaultModel}（可选择或自由输入）`,
+      `Default: ${preset.defaultModel} (pick or type)`
+    );
+    if (!opts.preserveLiveModels || datalistAiModels.options.length === 0) {
+      populateModelSuggestions(preset.models);
+    }
+    updateApiKeyPlaceholder();
+  }
+
+  function formatAiError(e) {
+    const raw = e && e.message ? e.message : String(e || '');
+    const lower = raw.toLowerCase();
+    if (raw.includes('ERR_API_KEY_MISSING')) {
+      return tr(
+        'settings.aiErrApiKeyMissing',
+        null,
+        '请先填写 API Key（Ollama 本地模式可留空）',
+        'Please enter an API Key first (optional for local Ollama)'
+      );
+    }
+    if (/\b(401|403)\b/.test(lower) || lower.includes('unauthorized') || lower.includes('forbidden') || lower.includes('invalid api key')) {
+      return tr(
+        'settings.aiErrAuth',
+        null,
+        'API Key 无效或无权限，请检查密钥',
+        'Invalid API Key or unauthorized'
+      );
+    }
+    if (/\b429\b/.test(lower) || lower.includes('rate limit') || lower.includes('quota')) {
+      return tr(
+        'settings.aiErrRateLimit',
+        null,
+        '请求过于频繁或额度不足 (429)',
+        'Rate limit or quota exceeded (429)'
+      );
+    }
+    if (/\b404\b/.test(lower) || lower.includes('model') || lower.includes('does not exist') || lower.includes('not supported')) {
+      return tr(
+        'settings.aiErrModel',
+        null,
+        '模型不存在或当前接口不支持，请点击「拉取模型」选择可用模型',
+        'Model not found or unsupported; use Fetch Models'
+      );
+    }
+    if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('etimedout')) {
+      return tr(
+        'settings.aiErrTimeout',
+        null,
+        '连接超时，请检查网络或 Base URL',
+        'Connection timed out'
+      );
+    }
+    return raw;
+  }
+
+  function renderAiErrorStatus(prefixKey, prefixZh, prefixEn, err) {
+    const raw = err && err.message ? err.message : String(err || '');
+    const errMsg = formatAiError(err);
+    const summaryText = tr(prefixKey, { error: errMsg }, `${prefixZh}：${errMsg}`, `${prefixEn}: ${errMsg}`);
+
+    aiTestStatus.className = 'ai-test-status err';
+    aiTestStatus.textContent = '';
+
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = summaryText;
+    aiTestStatus.appendChild(msgSpan);
+
+    const details = document.createElement('details');
+    details.className = 'ai-err-details';
+
+    const summary = document.createElement('summary');
+    summary.textContent = tr('settings.aiErrDetails', null, '查看技术详情', 'View technical details');
+    details.appendChild(summary);
+
+    const pre = document.createElement('pre');
+    pre.textContent = raw;
+    details.appendChild(pre);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.id = 'copyAiErrBtn';
+    copyBtn.className = 'btn btn-secondary btn-xs';
+    copyBtn.textContent = tr('settings.aiErrCopy', null, '复制详情', 'Copy details');
+    copyBtn.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(raw);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = raw;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        showToast(tr('settings.aiErrCopied', null, '已复制错误详情', 'Error details copied'));
+      } catch (_) {
+        showToast(tr('settings.aiErrCopyFailed', null, '复制失败，请手动选择复制', 'Copy failed, please copy manually'), true);
+      }
+    });
+    details.appendChild(copyBtn);
+
+    aiTestStatus.appendChild(details);
+    showToast(summaryText, true);
+  }
+
+  function updateApiKeyPlaceholder() {
+    if (aiHasApiKey && aiApiKeyMasked) {
+      inputAiApiKey.placeholder = tr(
+        'settings.aiApiKeyConfigured',
+        { masked: aiApiKeyMasked },
+        `已配置 (${aiApiKeyMasked})，留空保留原密钥`,
+        `Configured (${aiApiKeyMasked}), leave blank to keep`
+      );
+    } else if (selectAiProvider.value === 'ollama') {
+      inputAiApiKey.placeholder = tr(
+        'settings.aiApiKeyOptionalOllama',
+        null,
+        '本地 Ollama 通常无需 API Key（可选）',
+        'Optional for local Ollama'
+      );
+    } else {
+      inputAiApiKey.placeholder = tr(
+        'settings.aiApiKeyPlaceholder',
+        null,
+        '输入 API Key（安全存储在本地）',
+        'Enter API Key (stored locally)'
+      );
+    }
+  }
+
+  function updateDynamicTexts() {
+    if (!recording) {
+      keyHint.textContent = tr(
+        'settings.hotkeyRecordHint',
+        null,
+        '点击框内，然后按下新的组合键',
+        'Click the box, then press a new key combination'
+      );
+    } else {
+      keyHint.textContent = tr(
+        'settings.hotkeyRecordingHint',
+        null,
+        '请按下新的组合键 (支持符号和空格，按 Esc 取消)',
+        'Press new key combination (symbols & Space supported, Esc to cancel)'
+      );
+    }
+    taskDaysLabel.textContent = tr(
+      'settings.taskRetentionRange',
+      null,
+      '已完成任务清理 (30 - 180天)',
+      'Completed Task Cleanup (30 - 180 days)'
+    );
+    reportWeeksLabel.textContent = tr(
+      'settings.reportRetentionRange',
+      null,
+      '历史周报保留 (5 - 22周)',
+      'Weekly Report Retention (5 - 22 weeks)'
+    );
+    reminderHint.textContent = tr(
+      'settings.reminderHint',
+      null,
+      '到点弹出摘要通知 + 任务列表窗；错过则唤醒后补一次',
+      'Shows summary notification + task list at scheduled time; catches up on wake if missed'
+    );
+    promptsJsonNote.textContent = tr(
+      'settings.aiPromptsJsonNote',
+      null,
+      '注意：任务拆解与备忘录转任务的 JSON 输出格式由后端自动强制约束，无需在提示词中重复编写结构化格式要求。',
+      'Note: JSON output schema for Task Breakdown and Notes to Tasks is auto-enforced by the backend; no need to specify JSON formatting in the prompt.'
+    );
+    btnFetchModels.textContent = tr('settings.aiFetchModels', null, '拉取模型', 'Fetch');
+    const ollamaOpt = selectAiProvider.querySelector('option[value="ollama"]');
+    if (ollamaOpt) ollamaOpt.textContent = tr('settings.aiProviderOllama', null, 'Ollama 本地', 'Ollama (Local)');
+    const customOpt = selectAiProvider.querySelector('option[value="custom"]');
+    if (customOpt) customOpt.textContent = tr('settings.aiProviderCustom', null, '自定义 OpenAI 兼容', 'Custom (OpenAI Compatible)');
+    updateProviderDefaults(selectAiProvider.value, { preserveLiveModels: true });
+  }
+
+  function applyLanguageSetting(setting) {
+    const target = setting || 'auto';
+    if (I18n && typeof I18n.setLocale === 'function') {
+      I18n.setLocale(target);
+    }
+    updateDynamicTexts();
+  }
+
+  function applyAppConfigToForm(cfgResult) {
+    if (!cfgResult) return;
+    savedLanguageSetting = cfgResult.language || 'auto';
+    selectLanguage.value = savedLanguageSetting;
+    applyLanguageSetting(savedLanguageSetting);
+
+    prevDays = cfgResult.taskRetentionDays ?? 180;
+    prevWeeks = cfgResult.reportRetentionWeeks ?? 22;
+    inputTaskDays.value = prevDays;
+    inputReportWeeks.value = prevWeeks;
+    inputReminderEnabled.checked = !!cfgResult.dailyReminderEnabled;
+    const hh = Number.isFinite(cfgResult.dailyReminderHour) ? cfgResult.dailyReminderHour : 17;
+    const mm = Number.isFinite(cfgResult.dailyReminderMinute) ? cfgResult.dailyReminderMinute : 0;
+    inputReminderTime.value =
+      String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  }
+
+  function applyAiConfigToForm(aiCfg) {
+    if (!aiCfg) return;
+    selectAiProvider.value = AI_PROVIDER_PRESETS[aiCfg.provider] ? aiCfg.provider : (aiCfg.provider || 'openai');
+    aiHasApiKey = !!aiCfg.hasApiKey;
+    aiApiKeyMasked = aiCfg.apiKeyMasked || '';
+    inputAiApiKey.value = '';
+    inputAiBaseUrl.value = aiCfg.baseUrl || '';
+    inputAiModel.value = aiCfg.model || '';
+    const prompts = aiCfg.prompts || {};
+    inputPromptWeekly.value = prompts.weeklyReport || DEFAULT_PROMPTS.weeklyReport;
+    inputPromptBreakdown.value = prompts.taskBreakdown || DEFAULT_PROMPTS.taskBreakdown;
+    inputPromptNotes.value = prompts.notesToTasks || DEFAULT_PROMPTS.notesToTasks;
+    updateProviderDefaults(selectAiProvider.value);
+  }
+
+  function buildAiInput() {
+    const rawKey = inputAiApiKey.value.trim();
+    return {
+      provider: selectAiProvider.value || 'openai',
+      apiKey: rawKey ? rawKey : null,
+      clearApiKey: false,
+      baseUrl: inputAiBaseUrl.value.trim(),
+      model: inputAiModel.value.trim(),
+      prompts: {
+        weeklyReport: inputPromptWeekly.value.trim() || DEFAULT_PROMPTS.weeklyReport,
+        taskBreakdown: inputPromptBreakdown.value.trim() || DEFAULT_PROMPTS.taskBreakdown,
+        notesToTasks: inputPromptNotes.value.trim() || DEFAULT_PROMPTS.notesToTasks,
+      }
+    };
+  }
+
   async function loadCurrent() {
     try {
       const hkResult = await _api.hotkey.get();
@@ -187,15 +791,12 @@
       keyText.textContent = formatKey(currentKey);
 
       const cfgResult = await _api.config.get();
-      prevDays = cfgResult?.taskRetentionDays ?? 180;
-      prevWeeks = cfgResult?.reportRetentionWeeks ?? 22;
-      inputTaskDays.value = prevDays;
-      inputReportWeeks.value = prevWeeks;
-      inputReminderEnabled.checked = !!cfgResult?.dailyReminderEnabled;
-      const hh = Number.isFinite(cfgResult?.dailyReminderHour) ? cfgResult.dailyReminderHour : 17;
-      const mm = Number.isFinite(cfgResult?.dailyReminderMinute) ? cfgResult.dailyReminderMinute : 0;
-      inputReminderTime.value =
-        String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+      applyAppConfigToForm(cfgResult);
+
+      if (_api.ai && typeof _api.ai.getConfig === 'function') {
+        const aiCfg = await _api.ai.getConfig();
+        applyAiConfigToForm(aiCfg);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -214,13 +815,32 @@
     toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
   }
 
+  // 语言实时预览
+  selectLanguage.addEventListener('change', () => {
+    applyLanguageSetting(selectLanguage.value);
+  });
+
+  // 监听跨窗口配置变更
+  if (_api && typeof _api.onDataChange === 'function') {
+    _api.onDataChange((msg) => {
+      const patch = msg && msg.patch ? msg.patch : msg;
+      if (patch && patch.action === 'CONFIG_UPDATED') {
+        if (patch.payload) {
+          applyAppConfigToForm(patch.payload);
+        } else {
+          _api.config.get().then(applyAppConfigToForm).catch(console.error);
+        }
+      }
+    });
+  }
+
   // 快捷键录制
   keyDisplay.addEventListener('click', () => {
     if (recording) return;
     recording = true;
     keyDisplay.classList.add('recording');
-    keyText.textContent='...';
-    keyHint.textContent = '请按下新的组合键 (支持符号和空格，按 Esc 取消)';
+    keyText.textContent = '...';
+    updateDynamicTexts();
   });
 
   document.addEventListener('keydown', (e) => {
@@ -261,7 +881,12 @@
 
       const hasCtrlOnly = parts.includes('CommandOrControl') && parts.length === 2;
       if (hasCtrlOnly && HOTKEY_BLACKLIST[mainKey]) {
-        keyText.textContent = `⚠️ 禁止使用 Ctrl+${mainKey}`;
+        keyText.textContent = tr(
+          'settings.hotkeyForbidden',
+          { key: mainKey },
+          `⚠️ 禁止使用 Ctrl+${mainKey}`,
+          `⚠️ Ctrl+${mainKey} is reserved`
+        );
         // Bug-细节:守卫 recording,避免取消录制后这条 setTimeout 还在覆盖原显示
         setTimeout(() => { if (recording) keyText.textContent = '...'; }, 1500);
         return;
@@ -271,23 +896,98 @@
       keyText.textContent = formatKey(currentKey);
       stopRecording();
     } else {
-      keyText.textContent = '需要修饰键 + 字母/数字/符号';
+      keyText.textContent = tr(
+        'settings.hotkeyNeedModifier',
+        null,
+        '需要修饰键 + 字母/数字/符号',
+        'Need modifier + letter/digit/symbol'
+      );
     }
   });
 
   function stopRecording() {
     recording = false;
     keyDisplay.classList.remove('recording');
-    keyHint.textContent = '点击框内，然后按下新的组合键';
+    updateDynamicTexts();
   }
+
+  // AI 服务商切换联动默认值与推荐模型
+  selectAiProvider.addEventListener('change', () => {
+    updateProviderDefaults(selectAiProvider.value);
+  });
+
+  // AI 拉取线上模型列表
+  btnFetchModels.addEventListener('click', async () => {
+    if (!_api || !_api.ai || typeof _api.ai.listModels !== 'function') {
+      showToast(tr('settings.aiFetchUnavailable', null, '当前版本暂不支持在线拉取模型', 'Fetching models is not available'), true);
+      return;
+    }
+    btnFetchModels.disabled = true;
+    aiTestStatus.className = 'ai-test-status';
+    aiTestStatus.textContent = tr('settings.aiFetchingModels', null, '正在拉取模型列表...', 'Fetching models...');
+    try {
+      const models = await _api.ai.listModels(buildAiInput());
+      const list = Array.isArray(models) ? models.filter(Boolean) : [];
+      if (list.length > 0) {
+        populateModelSuggestions(list);
+        aiTestStatus.className = 'ai-test-status ok';
+        const okMsg = tr('settings.aiFetchSuccess', { count: list.length }, `已拉取 ${list.length} 个模型`, `Fetched ${list.length} models`);
+        aiTestStatus.textContent = okMsg;
+        showToast(okMsg);
+      } else {
+        updateProviderDefaults(selectAiProvider.value);
+        aiTestStatus.className = 'ai-test-status';
+        const emptyMsg = tr('settings.aiFetchEmpty', null, '未返回可用模型，已保留默认推荐', 'No models returned, keeping defaults');
+        aiTestStatus.textContent = emptyMsg;
+        showToast(emptyMsg);
+      }
+    } catch (e) {
+      renderAiErrorStatus('settings.aiFetchFailed', '拉取失败', 'Fetch failed', e);
+    } finally {
+      btnFetchModels.disabled = false;
+    }
+  });
+
+  // AI 测试连接
+  btnTestAi.addEventListener('click', async () => {
+    if (!_api || !_api.ai) return;
+    btnTestAi.disabled = true;
+    aiTestStatus.className = 'ai-test-status';
+    aiTestStatus.textContent = tr('settings.aiTesting', null, '正在测试连接...', 'Testing connection...');
+    try {
+      const res = await _api.ai.testConnection(buildAiInput());
+      aiTestStatus.className = 'ai-test-status ok';
+      aiTestStatus.textContent = tr('settings.aiTestSuccess', null, '连接成功', 'Connection successful');
+      showToast(res ? String(res) : tr('settings.aiTestSuccess', null, '连接成功', 'Connection successful'));
+    } catch (e) {
+      renderAiErrorStatus('settings.aiTestFailed', '连接失败', 'Connection failed', e);
+    } finally {
+      btnTestAi.disabled = false;
+    }
+  });
+
+  // 单个提示词恢复默认
+  document.querySelectorAll('.reset-prompt-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-prompt-key');
+      if (key === 'weeklyReport') inputPromptWeekly.value = DEFAULT_PROMPTS.weeklyReport;
+      else if (key === 'taskBreakdown') inputPromptBreakdown.value = DEFAULT_PROMPTS.taskBreakdown;
+      else if (key === 'notesToTasks') inputPromptNotes.value = DEFAULT_PROMPTS.notesToTasks;
+      showToast(tr('settings.aiPromptsResetDone', null, '已恢复默认提示词', 'Prompts reset to default'));
+    });
+  });
 
   // 保存与取消
   document.getElementById('saveBtn').addEventListener('click', async () => {
     const days = parseInt(inputTaskDays.value, 10);
     const weeks = parseInt(inputReportWeeks.value, 10);
 
-    if (isNaN(days) || days < 30 || days > 180) return showToast('任务保留天数需在 30-180 之间', true);
-    if (isNaN(weeks) || weeks < 5 || weeks > 22) return showToast('周报保留周数需在 5-22 之间', true);
+    if (isNaN(days) || days < 30 || days > 180) {
+      return showToast(tr('settings.validationTaskDays', null, '任务保留天数需在 30-180 之间', 'Task retention must be 30-180 days'), true);
+    }
+    if (isNaN(weeks) || weeks < 5 || weeks > 22) {
+      return showToast(tr('settings.validationReportWeeks', null, '周报保留周数需在 5-22 之间', 'Report retention must be 5-22 weeks'), true);
+    }
 
     // Bug-99 时空悖论防御:调低保留期限会立即触发数据清理(不可恢复)。
     // Config 修改已被移除出 undo 栈,必须靠这里的前置确认兜底。
@@ -295,12 +995,29 @@
     const loweringWeeks = weeks < prevWeeks;
     if (loweringDays || loweringWeeks) {
       const lines = [];
-      if (loweringDays) lines.push(`• 任务保留: ${prevDays} 天 → ${days} 天(旧任务将被立即删除)`);
-      if (loweringWeeks) lines.push(`• 周报保留: ${prevWeeks} 周 → ${weeks} 周(旧周报将被立即删除)`);
-      const ok = window.confirm(
-        '调低保留期限将立即清理对应数据,且无法撤回。\n\n' +
-        lines.join('\n') + '\n\n是否继续?'
+      if (loweringDays) {
+        lines.push(tr(
+          'settings.confirmLoweringDays',
+          { prev: prevDays, next: days },
+          `• 任务保留: ${prevDays} 天 → ${days} 天(旧任务将被立即删除)`,
+          `• Task retention: ${prevDays} days → ${days} days (older tasks will be deleted immediately)`
+        ));
+      }
+      if (loweringWeeks) {
+        lines.push(tr(
+          'settings.confirmLoweringWeeks',
+          { prev: prevWeeks, next: weeks },
+          `• 周报保留: ${prevWeeks} 周 → ${weeks} 周(旧周报将被立即删除)`,
+          `• Report retention: ${prevWeeks} weeks → ${weeks} weeks (older reports will be deleted immediately)`
+        ));
+      }
+      const confirmMsg = tr(
+        'settings.confirmLoweringRetention',
+        { lines: lines.join('\n') },
+        `调低保留期限将立即清理对应数据,且无法撤回。\n\n${lines.join('\n')}\n\n是否继续?`,
+        `Lowering retention will immediately delete older data and cannot be undone.\n\n${lines.join('\n')}\n\nContinue?`
       );
+      const ok = window.confirm(confirmMsg);
       if (!ok) return;
     }
 
@@ -308,27 +1025,44 @@
       const hkRes = await _api.hotkey.set(currentKey);
       // Bug-快捷键注册失败静默吞噬修复:后端返回 {ok:false, error} 时不抛异常,必须手动检查
       if (hkRes && hkRes.ok === false) {
-        showToast('❌ 保存失败: ' + (hkRes.error || '快捷键无效'), true);
+        const err = hkRes.error || tr('settings.hotkeyInvalid', null, '快捷键无效', 'Invalid hotkey');
+        showToast(tr('settings.hotkeyFailed', { error: err }, `快捷键设置失败：${err}`, `Failed to set hotkey: ${err}`), true);
         return;
       }
+
+      const nextLanguage = selectLanguage.value || 'auto';
       await _api.config.update({
+        language: nextLanguage,
         taskRetentionDays: days,
         reportRetentionWeeks: weeks,
         dailyReminderEnabled: !!inputReminderEnabled.checked,
         dailyReminderHour: parseInt((inputReminderTime.value || '17:00').split(':')[0], 10) || 0,
         dailyReminderMinute: parseInt((inputReminderTime.value || '17:00').split(':')[1], 10) || 0,
       });
-      showToast('✅ 设置已保存生效');
+
+      if (_api.ai && typeof _api.ai.saveConfig === 'function') {
+        const savedAi = await _api.ai.saveConfig(buildAiInput());
+        applyAiConfigToForm(savedAi);
+      }
+
+      savedLanguageSetting = nextLanguage;
+      applyLanguageSetting(nextLanguage);
+
+      showToast(tr('settings.saved', null, '设置已保存', 'Settings saved'));
       prevDays = days;
       prevWeeks = weeks;
       setTimeout(() => dismissSettingsWindow(), 800);
     } catch (e) {
-      showToast('❌ 保存失败: ' + e.message, true);
+      const errMsg = e && e.message ? e.message : String(e);
+      showToast(tr('settings.saveFailed', { error: errMsg }, `保存设置失败：${errMsg}`, `Failed to save settings: ${errMsg}`), true);
     }
   });
 
   async function dismissSettingsWindow() {
     try {
+      await loadCurrent();
+      aiTestStatus.className = 'ai-test-status';
+      aiTestStatus.textContent = '';
       if (_api && _api.window && _api.window.hide) {
         await _api.window.hide();
       } else if (window.__TAURI__ && window.__TAURI__.window) {
@@ -339,7 +1073,12 @@
     }
   }
 
-  document.getElementById('cancelBtn').addEventListener('click', () => dismissSettingsWindow());
+  document.getElementById('cancelBtn').addEventListener('click', async () => {
+    await loadCurrent();
+    selectLanguage.value = savedLanguageSetting;
+    applyLanguageSetting(savedLanguageSetting);
+    await dismissSettingsWindow();
+  });
 
   loadCurrent();
 </script>

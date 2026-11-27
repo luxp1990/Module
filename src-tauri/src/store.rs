@@ -1492,9 +1492,14 @@ impl DataStore {
             for (k, v) in map {
                 match k.as_str() {
                     "taskRetentionDays" => if let Some(n) = v.as_i64() { self.data.config.task_retention_days = n; },
-                    "reportRetentionWeeks" => if let Some(n) = v.as_i64() { self.data.config.report_retention_weeks = n; },
+                    "reportRetentionWeeks" => if let Some(n) = v.as_i64() { self.data.config.report_retention_weeks = n.clamp(5, 22); },
                     "autoPlan" => if let Some(b) = v.as_bool() { self.data.config.auto_plan = b; },
                     "theme" => if let Some(s) = v.as_str() { self.data.config.theme = s.to_string(); },
+                    "language" => if let Some(s) = v.as_str() {
+                        if matches!(s, "auto" | "zh-CN" | "en-US") {
+                            self.data.config.language = s.to_string();
+                        }
+                    },
                     "projectScopeIds" => {
                         if let Some(arr) = v.as_array() {
                             self.data.config.project_scope_ids = arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect();

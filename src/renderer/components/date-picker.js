@@ -26,7 +26,9 @@
 
       this._onConfirm = onConfirmCallback;
 
-      const dpState = { target, title: title || '选择日期', hint: hint || '' };
+      const I18n = window.ModuleApp?.I18n;
+      const defaultTitle = I18n?.getLocale?.() === 'en-US' ? 'Select Date' : '选择日期';
+      const dpState = { target, title: title || defaultTitle, hint: hint || '' };
 
 
 
@@ -126,7 +128,10 @@
 
       const titleEl = document.getElementById('dpTitle');
 
-      if (titleEl) titleEl.textContent = `${viewYear} 年 ${viewMonth} 月`;
+      if (titleEl) {
+        const I18n = window.ModuleApp?.I18n;
+        titleEl.textContent = I18n?.t('datePicker.yearMonth', { year: viewYear, month: viewMonth }) || `${viewYear} 年 ${viewMonth} 月`;
+      }
 
 
 

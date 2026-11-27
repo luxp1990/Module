@@ -140,6 +140,9 @@ window.ModuleApp.Utils = {
     const y = d.getFullYear();
     const m = String(d.getMonth()+1).padStart(2,'0');
     const day = String(d.getDate()).padStart(2,'0');
+    if (window.ModuleApp?.I18n?.getLocale?.() === 'en-US') {
+      return y + '-' + m + '-' + day;
+    }
     return y + '年' + m + '月' + day + '日';
   },
   // 日历日差：两端都归零到本地 00:00，用 round；禁止 end=23:59:59 + ceil（今天会变成 0.999→1「明天」）
@@ -161,10 +164,11 @@ window.ModuleApp.Utils = {
     if (!iso) return '';
     const days = this.daysFromNow(iso);
     if (days === null) return '';
-    if (days < 0) return '已逾期 ' + Math.abs(days) + ' 天';
-    if (days === 0) return '今天截止';
-    if (days === 1) return '明天截止';
-    return '剩余 ' + days + ' 天';
+    const I18n = window.ModuleApp?.I18n;
+    if (days < 0) return I18n?.t('deadline.daysOverdue', { days: Math.abs(days) }) || ('已逾期 ' + Math.abs(days) + ' 天');
+    if (days === 0) return I18n?.t('deadline.dueToday') || '今天截止';
+    if (days === 1) return I18n?.t('deadline.tomorrow') || '明天截止';
+    return I18n?.t('deadline.daysLeft', { days }) || ('剩余 ' + days + ' 天');
   },
   highlightMatch(text, query) {
     if (!text) return '';

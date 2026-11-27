@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Module 组件</title>
+  <title data-i18n="widget.docTitle">Module 组件</title>
   <script src="api-bridge.js"></script>
+  <script src="i18n.js"></script>
   <script src="utils.js"></script>
   <script src="shared/task-sort.js"></script>
   <script src="shared/project-scope.js"></script>
@@ -601,10 +602,10 @@
     <div class="widget-header" data-tauri-drag-region>
       <span class="widget-title" data-tauri-drag-region>📋 Module</span>
       <div class="widget-controls">
-        <button class="widget-btn active" id="pinWindowBtn" title="取消置顶">📌</button>
-        <button class="widget-btn main-btn" id="focusMainBtn" title="切回主窗口">⤢</button>
-        <button class="widget-btn" id="undoBtn" title="撤回上一步">↶</button>
-        <button class="widget-btn close-btn" id="closeBtn" title="关闭">✕</button>
+        <button class="widget-btn active" id="pinWindowBtn" title="取消置顶" data-i18n-title="widget.unpin">📌</button>
+        <button class="widget-btn main-btn" id="focusMainBtn" title="切回主窗口" data-i18n-title="widget.openMain">⤢</button>
+        <button class="widget-btn" id="undoBtn" title="撤回上一步" data-i18n-title="toolbar.undo">↶</button>
+        <button class="widget-btn close-btn" id="closeBtn" title="关闭" data-i18n-title="common.close">✕</button>
       </div>
     </div>
 
@@ -617,7 +618,7 @@
     <!-- Body -->
     <div class="parent-tooltip" id="parentTooltip"></div>
     <div class="widget-body" id="widgetBody">
-      <div class="empty-hint">加载中...</div>
+      <div class="empty-hint" data-i18n="common.loading">加载中...</div>
     </div>
 
     <!-- Toast 通知容器 -->
@@ -627,22 +628,58 @@
     <div class="rescue-bar" id="rescueDraftBar" hidden>
       <span class="rescue-bar-text" id="rescueDraftText"></span>
       <div class="rescue-bar-actions">
-        <button type="button" class="rescue-btn" id="rescueCopyBtn">复制</button>
-        <button type="button" class="rescue-btn" id="rescueRestoreBtn">恢复</button>
+        <button type="button" class="rescue-btn" id="rescueCopyBtn" data-i18n="common.copy">复制</button>
+        <button type="button" class="rescue-btn" id="rescueRestoreBtn" data-i18n="common.restore">恢复</button>
         <button type="button" class="rescue-btn" id="rescueDismissBtn" title="丢弃暂存">✕</button>
       </div>
     </div>
 
     <!-- Quick Add -->
     <div class="quick-add" id="quickAddBar">
-      <input type="text" id="quickInput" placeholder="快速添加任务..." />
+      <input type="text" id="quickInput" placeholder="快速添加任务..." data-i18n-placeholder="widget.quickAddPlaceholder" />
       <button id="addBtn">+</button>
     </div>
   </div>
 
   <script>
     const _api = window.api;
+    const I18n = window.ModuleApp && window.ModuleApp.I18n;
     let currentTab = 'tasks';
+
+    function tr(key, fallbackZh, fallbackEn, params) {
+      let text;
+      if (I18n && I18n.hasKey(key)) {
+        text = I18n.t(key, params);
+      } else {
+        const isEn = I18n && I18n.getLocale() === 'en-US';
+        text = (isEn && fallbackEn) ? fallbackEn : fallbackZh;
+        if (params && typeof text === 'string') {
+          text = text.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined && params[k] !== null ? String(params[k]) : m));
+        }
+      }
+      return text;
+    }
+
+    function applyWidgetI18n() {
+      if (I18n) I18n.applyDom(document);
+      const pinBtn = document.getElementById('pinWindowBtn');
+      if (pinBtn) {
+        const isPinned = pinBtn.classList.contains('active');
+        pinBtn.title = isPinned ? tr('widget.unpin', '取消置顶', 'Unpin') : tr('widget.pin', '置顶窗口', 'Pin on Top');
+      }
+      const tabTasks = document.getElementById('tabTasks');
+      if (tabTasks) tabTasks.textContent = '📋 ' + tr('widget.tabTasks', '任务', 'Tasks');
+      const tabNotes = document.getElementById('tabNotes');
+      if (tabNotes) tabNotes.textContent = '📝 ' + tr('widget.tabNotes', '便签', 'Notes');
+      const dismissBtn = document.getElementById('rescueDismissBtn');
+      if (dismissBtn) dismissBtn.title = tr('widget.discardDraft', '丢弃暂存', 'Discard draft');
+      const quickInput = document.getElementById('quickInput');
+      if (quickInput) {
+        quickInput.placeholder = currentTab === 'tasks'
+          ? tr('widget.quickAddPlaceholder', '快速添加待办，按回车保存...', 'Quick add task, press Enter...')
+          : tr('widget.quickAddNotePlaceholder', '快速添加便签...', 'Quick add note...');
+      }
+    }
 
     // ==================== Widget 自包含 Toast ====================
     window.ModuleApp = window.ModuleApp || {};
@@ -679,7 +716,7 @@
       const pinBtn = document.getElementById('pinWindowBtn');
       if (pinBtn) {
         pinBtn.classList.toggle('active', isPinned);
-        pinBtn.title = isPinned ? '取消置顶' : '置顶窗口';
+        pinBtn.title = isPinned ? tr('widget.unpin', '取消置顶', 'Unpin') : tr('widget.pin', '置顶窗口', 'Pin on Top');
       }
     }).catch(() => {});
 
@@ -753,10 +790,16 @@
         return;
       }
       const { latest, count } = info;
-      const kindLabel = latest.type === 'note' ? '便签草稿' : `任务「${latest.title || ''}」草稿`;
-      txt.textContent = `已暂存${kindLabel}${count > 1 ? `（共${count}条）` : ''}`;
+      const kindLabel = latest.type === 'note'
+        ? tr('widget.noteDraft', '便签草稿', 'Note draft')
+        : tr('widget.taskDraft', '任务「{title}」草稿', 'Task "{title}" draft', { title: latest.title || '' });
+      txt.textContent = count > 1
+        ? tr('widget.stashedDraftCount', '已暂存{kind}（共{count}条）', 'Stashed {kind} ({count} total)', { kind: kindLabel, count })
+        : tr('widget.stashedDraft', '已暂存{kind}', 'Stashed {kind}', { kind: kindLabel });
       if (restoreBtn) {
-        restoreBtn.textContent = latest.type === 'note' ? '恢复为新便签' : '恢复';
+        restoreBtn.textContent = latest.type === 'note'
+          ? tr('widget.restoreAsNewNote', '恢复为新便签', 'Restore as Note')
+          : tr('common.restore', '恢复', 'Restore');
         restoreBtn.style.display = latest.type === 'note' ? '' : 'none';
       }
       bar.hidden = false;
@@ -765,8 +808,8 @@
       if (!d) return '';
       if (d.type === 'note') return d.content || '';
       const parts = [];
-      if (d.startDate) parts.push(`开始: ${d.startDate}`);
-      if (d.deadline) parts.push(`截止: ${d.deadline}`);
+      if (d.startDate) parts.push(tr('widget.startPrefix', '开始: {date}', 'Start: {date}', { date: d.startDate }));
+      if (d.deadline) parts.push(tr('widget.deadlinePrefix', '截止: {date}', 'Deadline: {date}', { date: d.deadline }));
       if (d.notes) parts.push(d.notes);
       return parts.join('\n');
     }
@@ -777,9 +820,9 @@
       try {
         if (_api.writeClipboard) await _api.writeClipboard(text);
         else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-        window.ModuleApp.Toast.show('已复制暂存草稿', 'success');
+        window.ModuleApp.Toast.show(tr('widget.draftCopied', '已复制暂存草稿', 'Draft copied'), 'success');
       } catch (e) {
-        window.ModuleApp.Toast.show('复制失败: ' + (e?.message || e), true);
+        window.ModuleApp.Toast.show(tr('toast.copyFailed', '复制失败', 'Copy failed') + ': ' + (e?.message || e), true);
       }
     });
     document.getElementById('rescueRestoreBtn')?.addEventListener('click', async () => {
@@ -793,10 +836,10 @@
       try {
         await _api.notes.create({ content: d.content });
         removeRescueDraft(d.type, d.id);
-        window.ModuleApp.Toast.show('已恢复为新便签', 'success');
+        window.ModuleApp.Toast.show(tr('widget.restoredAsNewNote', '已恢复为新便签', 'Restored as new note'), 'success');
         if (currentTab === 'notes') refresh();
       } catch (e) {
-        window.ModuleApp.Toast.show('恢复失败: ' + (e?.message || e), true);
+        window.ModuleApp.Toast.show(tr('widget.restoreFailed', '恢复失败: {error}', 'Restore failed: {error}', { error: e?.message || e }), true);
       }
     });
     document.getElementById('rescueDismissBtn')?.addEventListener('click', () => {
@@ -823,10 +866,10 @@
       const input = document.getElementById('quickInput');
       const btn = document.getElementById('addBtn');
       if (tab === 'tasks') {
-        input.placeholder = '快速添加任务...';
+        input.placeholder = tr('widget.quickAddPlaceholder', '快速添加待办，按回车保存...', 'Quick add task, press Enter...');
         btn.textContent = '+';
       } else {
-        input.placeholder = '快速添加便签...';
+        input.placeholder = tr('widget.quickAddNotePlaceholder', '快速添加便签...', 'Quick add note...');
         btn.textContent = '+';
       }
       input.value = '';
@@ -838,7 +881,7 @@
       const btn = e.currentTarget;
       const isPinned = !btn.classList.contains('active');
       btn.classList.toggle('active', isPinned);
-      btn.title = isPinned ? '取消置顶' : '置顶窗口';
+      btn.title = isPinned ? tr('widget.unpin', '取消置顶', 'Unpin') : tr('widget.pin', '置顶窗口', 'Pin on Top');
       await _api.widget.setAlwaysOnTop(isPinned);
     });
     document.getElementById('closeBtn').addEventListener('click', async () => {
@@ -868,6 +911,13 @@
       const patch = data && data.patch;
       if (!patch) {
         // 全量：reorder / import / undo / cleanup / config 变更
+        _api.config.get().then(config => {
+          if (config && config.theme) applyWidgetTheme(config.theme);
+          if (config && config.language !== undefined && I18n) {
+            I18n.setLocale(config.language);
+            applyWidgetI18n();
+          }
+        }).catch(() => {});
         refresh(); return;
       }
       // 增量：对 widget 本地状态做精准 patch，不走全量 reload
@@ -954,6 +1004,10 @@
         case 'REPORT_UPDATED':
         case 'CONFIG_UPDATED':
           applyWidgetTheme(patch.payload && patch.payload.theme);
+          if (patch.payload && patch.payload.language !== undefined && I18n) {
+            I18n.setLocale(patch.payload.language);
+            applyWidgetI18n();
+          }
           // Widget 固定全局，忽略 widgetProjectScopeIds 补丁
           refresh(); return;
         case 'DATA_UNDO':
@@ -961,8 +1015,12 @@
         case 'EXTERNAL_DATA_CHANGED':
           _api.config.get().then(config => {
             applyWidgetTheme(config.theme);
+            if (config && config.language !== undefined && I18n) {
+              I18n.setLocale(config.language);
+              applyWidgetI18n();
+            }
             return refresh();
-          }).catch(error => window.ModuleApp.Toast.show('读取配置失败: ' + (error.message || error), 'warning'));
+          }).catch(error => window.ModuleApp.Toast.show(tr('toast.loadFailed', '加载失败：{error}', 'Failed to load: {error}', { error: error.message || error }), 'warning'));
           return;
         case 'TASK_REORDERED':
           refresh(); return;
@@ -1031,8 +1089,8 @@
           if (!notesList.some(n => n.id === editingNoteId)) {
             const rescued = (editingNoteDraft || '').trim();
             if (rescued) {
-              saveRescueDraft({ type: 'note', id: editingNoteId, title: '便签', content: editingNoteDraft });
-              window.ModuleApp.Toast.show('正在编辑的便签已被其他端删除，内容已暂存到恢复栏', 'warning');
+              saveRescueDraft({ type: 'note', id: editingNoteId, title: tr('widget.noteLabel', '便签', 'Note'), content: editingNoteDraft });
+              window.ModuleApp.Toast.show(tr('widget.noteDeletedStashed', '正在编辑的便签已被其他端删除，内容已暂存到恢复栏', 'Note being edited was deleted elsewhere; content stashed'), 'warning');
             }
             editingNoteId = null;
             editingNoteDraft = null;
@@ -1080,12 +1138,12 @@
             saveRescueDraft({
               type: 'task',
               id: editingTaskId,
-              title: orig?.content || '任务',
+              title: orig?.content || tr('widget.taskLabel', '任务', 'Task'),
               startDate: snap.start || null,
               deadline: snap.deadline || null,
               notes: snap.notes || '',
             });
-            window.ModuleApp.Toast.show('正在编辑的任务已变更或删除，草稿已暂存到恢复栏', 'warning');
+            window.ModuleApp.Toast.show(tr('widget.taskChangedStashed', '正在编辑的任务已变更或删除，草稿已暂存到恢复栏', 'Task being edited changed or was deleted; draft stashed'), 'warning');
           }
           editingTaskId = null;
           editingTaskOriginal = null;
@@ -1186,28 +1244,28 @@
       let html = '';
 
       if (today.length > 0) {
-        html += '<div class="section-label">📌 今天到期</div>';
+        html += `<div class="section-label">📌 ${escapeHtml(tr('deadline.dueToday', '今日到期', 'Due today'))}</div>`;
         for (const t of today) html += renderTaskItem(t, 'today', tasks);
       }
       if (overdue.length > 0) {
-        html += '<div class="section-label">🔴 已逾期</div>';
+        html += `<div class="section-label">🔴 ${escapeHtml(tr('widget.overdueSection', '已逾期', 'Overdue'))}</div>`;
         for (const t of overdue) html += renderTaskItem(t, 'overdue', tasks);
       }
       if (upcoming.length > 0) {
-        html += '<div class="section-label">📅 近 7 天</div>';
+        html += `<div class="section-label">📅 ${escapeHtml(tr('widget.upcomingSection', '即将到期', 'Upcoming'))}</div>`;
         for (const t of upcoming) html += renderTaskItem(t, 'normal', tasks);
       }
       if (later.length > 0) {
-        html += '<div class="section-label">📅 7天后</div>';
+        html += `<div class="section-label">📅 ${escapeHtml(tr('deadline.later', '更晚', 'Later'))}</div>`;
         for (const t of later) html += renderTaskItem(t, 'normal', tasks);
       }
       if (noDeadline.length > 0) {
-        html += '<div class="section-label">📭 无截止日期</div>';
+        html += `<div class="section-label">📭 ${escapeHtml(tr('deadline.noDeadline', '无截止日期', 'No Deadline'))}</div>`;
         for (const t of noDeadline) html += renderTaskItem(t, 'normal', tasks);
       }
 
       if (!html) {
-        html = '<div class="empty-hint">🎉 暂无待办任务</div>';
+        html = `<div class="empty-hint">🎉 ${escapeHtml(tr('widget.empty', '今日暂无待办任务', 'No tasks due today'))}</div>`;
       }
 
       targetBody.innerHTML = html;
@@ -1247,14 +1305,18 @@
       allTasks = allTasks || [];
       const dl = t.deadline ? parseLocalDate(t.deadline) : null;
       const dateStr = dl ? `${dl.getMonth() + 1}/${dl.getDate()}` : '';
-      const metaText = type === 'overdue' ? `逾期 ${Math.abs(t.diff)} 天` :
-                       type === 'today' ? '今天到期' :
-                       t.diff ? `${t.diff} 天后` : '';
+      const metaText = type === 'overdue' ? tr('deadline.daysOverdue', '逾期 {days} 天', '{days}d overdue', { days: Math.abs(t.diff) }) :
+                       type === 'today' ? tr('deadline.dueToday', '今日到期', 'Due today') :
+                       t.diff ? tr('deadline.daysLeft', '剩余 {days} 天', '{days}d left', { days: t.diff }) : '';
       const dotColor = getLevelDotColor(t, allTasks);
       const dotStyle = `style="background:${dotColor}"`;
       const expanded = editingTaskId === t.id;
       // 优先级徽章
-      const pLabels = { p0: 'P0', p1: 'P1', p2: 'P2' };
+      const pLabels = {
+        p0: tr('priority.p0Short', 'P0', 'P0'),
+        p1: tr('priority.p1Short', 'P1', 'P1'),
+        p2: tr('priority.p2Short', 'P2', 'P2'),
+      };
       const priorityBadge = t.priority
         ? `<span class="widget-priority ${t.priority}">${pLabels[t.priority] || t.priority}</span>`
         : '';
@@ -1282,20 +1344,20 @@
       const notes = draft ? (draft.notes || '') : (t.notes || '');
       return `<div class="task-actions show" data-task-id="${t.id}">
         <div class="row">
-          <label>截止</label>
+          <label>${escapeHtml(tr('widget.deadlineShort', '截止', 'Due'))}</label>
           <input type="date" id="editDeadline_${t.id}" value="${dl}" />
         </div>
         <div class="row">
-          <label>开始</label>
+          <label>${escapeHtml(tr('widget.startShort', '开始', 'Start'))}</label>
           <input type="date" id="editStart_${t.id}" value="${startDate}" />
         </div>
         <div>
-          <label>备注</label>
-          <textarea id="editNotes_${t.id}" placeholder="添加备注...">${escapeHtml(notes)}</textarea>
+          <label>${escapeHtml(tr('widget.notesLabel', '备注', 'Notes'))}</label>
+          <textarea id="editNotes_${t.id}" placeholder="${escapeHtml(tr('widget.notesPlaceholder', '添加备注...', 'Add notes...'))}">${escapeHtml(notes)}</textarea>
         </div>
         <div class="btn-row">
-          <button class="btn btn-cancel" data-action="cancel" data-task-id="${t.id}">取消</button>
-          <button class="btn btn-save" data-action="save" data-task-id="${t.id}">保存</button>
+          <button class="btn btn-cancel" data-action="cancel" data-task-id="${t.id}">${escapeHtml(tr('common.cancel', '取消', 'Cancel'))}</button>
+          <button class="btn btn-save" data-action="save" data-task-id="${t.id}">${escapeHtml(tr('common.save', '保存', 'Save'))}</button>
         </div>
       </div>`;
     }
@@ -1360,7 +1422,7 @@
         if (chain.length === 0) return;
 
         // 构建 HTML
-        let h = '<div class="chain-label">母任务链</div>';
+        let h = `<div class="chain-label">${escapeHtml(tr('widget.parentChain', '母任务链', 'Parent Chain'))}</div>`;
         for (let i = 0; i < chain.length; i++) {
           const p = chain[i];
           const level = i; // 0=主任务, 1=一级子, ...
@@ -1368,7 +1430,7 @@
           const dotColor = colors[level] || colors[colors.length - 1];
           if (i > 0) h += '<span class="chain-arrow">→</span>';
           h += `<span class="chain-dot" style="background:${dotColor}"></span>`;
-          h += `<span class="chain-text">${escapeHtml(p.content || '(空)')}</span>`;
+          h += `<span class="chain-text">${escapeHtml(p.content || tr('widget.emptyTitle', '(空)', '(Empty)'))}</span>`;
         }
         tooltip.innerHTML = h;
         // 定位在鼠标右下方,并做边缘碰撞检测防止溢出小组件窗口
@@ -1464,7 +1526,7 @@
       const startDate = submitted.start || null;
       const notes = submitted.notes || null;
       if (startDate && deadline && deadline < startDate) {
-        window.ModuleApp.Toast.show('截止日期不能早于开始日期', true);
+        window.ModuleApp.Toast.show(tr('toast.validationDateRange', '开始日期不能晚于截止日期', 'Start date cannot be later than deadline'), true);
         return false;
       }
       editingTaskDraft = { id, deadline: submitted.deadline, start: submitted.start, notes: submitted.notes };
@@ -1491,7 +1553,7 @@
             saveRescueDraft({
               type: 'task',
               id,
-              title: editingTaskOriginal?.content || '任务',
+              title: editingTaskOriginal?.content || tr('widget.taskLabel', '任务', 'Task'),
               startDate: latest.start || null,
               deadline: latest.deadline || null,
               notes: latest.notes || '',
@@ -1517,7 +1579,7 @@
             saveRescueDraft({
               type: 'task',
               id,
-              title: editingTaskOriginal?.content || '任务',
+              title: editingTaskOriginal?.content || tr('widget.taskLabel', '任务', 'Task'),
               startDate: latest.start || null,
               deadline: latest.deadline || null,
               notes: latest.notes || '',
@@ -1525,14 +1587,14 @@
             editingTaskId = null;
             editingTaskOriginal = null;
             editingTaskDraft = null;
-            window.ModuleApp.Toast.show('任务已被删除或完成，草稿已暂存到恢复栏', 'warning');
+            window.ModuleApp.Toast.show(tr('widget.taskDeletedOrCompletedStashed', '任务已被删除或完成，草稿已暂存到恢复栏', 'Task was deleted or completed; draft stashed'), 'warning');
             if (!opts.skipRefresh) await refresh();
             return false;
           }
           if (editingTaskId === id) {
             editingTaskDraft = { id, deadline: latest.deadline, start: latest.start, notes: latest.notes };
           }
-          window.ModuleApp.Toast.show('保存失败，已保留编辑内容: ' + (err?.message || err), true);
+          window.ModuleApp.Toast.show(tr('widget.saveFailedKept', '保存失败，已保留编辑内容: {error}', 'Save failed, edits kept: {error}', { error: err?.message || err }), true);
           return false;
         }
       })();
@@ -1566,15 +1628,15 @@
       if (editingNoteId && !notes.some(n => n.id === editingNoteId)) {
         const rescued = (editingNoteDraft || '').trim();
         if (rescued) {
-          saveRescueDraft({ type: 'note', id: editingNoteId, title: '便签', content: editingNoteDraft });
-          window.ModuleApp.Toast.show('正在编辑的便签已被其他端删除，内容已暂存到恢复栏', 'warning');
+          saveRescueDraft({ type: 'note', id: editingNoteId, title: tr('widget.noteLabel', '便签', 'Note'), content: editingNoteDraft });
+          window.ModuleApp.Toast.show(tr('widget.noteDeletedStashed', '正在编辑的便签已被其他端删除，内容已暂存到恢复栏', 'Note being edited was deleted elsewhere; content stashed'), 'warning');
         }
         editingNoteId = null;
         editingNoteDraft = null;
       }
 
       if (notes.length === 0) {
-        targetBody.innerHTML = '<div class="empty-hint">📝 暂无便签</div>';
+        targetBody.innerHTML = `<div class="empty-hint">📝 ${escapeHtml(tr('widget.notesEmpty', '暂无便签', 'No notes yet'))}</div>`;
         return;
       }
 
@@ -1586,7 +1648,7 @@
         const pinnedClass = n.pinned ? 'pinned' : '';
 
         html += `<div class="note-item ${colorClass} ${pinnedClass}" data-note-id="${n.id}" ${editing ? '' : 'draggable="true"'}>
-          <div class="note-drag-handle" title="拖拽排序">⠿</div>
+          <div class="note-drag-handle" title="${escapeHtml(tr('widget.dragToReorder', '拖拽排序', 'Drag to reorder'))}">⠿</div>
           ${editing
             ? `<div class="note-text editing" contenteditable="true" id="noteEdit_${n.id}">${escapeHtml(editText)}</div>`
             : `<div class="note-text">${escapeHtml(n.content)}</div>`
@@ -1594,10 +1656,10 @@
           <div class="note-footer">
             <span class="note-time">${formatTime(n.updatedAt)}${n.pinned ? ' · 📌' : ''}</span>
             <div class="note-actions">
-              <span class="note-action" data-action="pin" data-note-id="${n.id}">${n.pinned ? '取消置顶' : '置顶'}</span>
+              <span class="note-action" data-action="pin" data-note-id="${n.id}">${escapeHtml(n.pinned ? tr('widget.unpin', '取消置顶', 'Unpin') : tr('widget.pinNote', '置顶', 'Pin'))}</span>
               <span class="note-action" data-action="color" data-note-id="${n.id}">🎨</span>
-              <span class="note-action" data-action="edit" data-note-id="${n.id}">${editing ? '完成' : '编辑'}</span>
-              <span class="note-action danger" data-action="delete" data-note-id="${n.id}">删除</span>
+              <span class="note-action" data-action="edit" data-note-id="${n.id}">${escapeHtml(editing ? tr('common.done', '完成', 'Done') : tr('common.edit', '编辑', 'Edit'))}</span>
+              <span class="note-action danger" data-action="delete" data-note-id="${n.id}">${escapeHtml(tr('common.delete', '删除', 'Delete'))}</span>
             </div>
           </div>
           <div class="note-color-picker" id="colorPicker_${n.id}">
@@ -1778,7 +1840,7 @@
 
           // Bug-便签跨界修复:置顶便签与普通便签不能交叉排序(后端 getNotes 永远把置顶排前面)
           if (sourceNote.pinned !== targetNote.pinned) {
-            window.ModuleApp.Toast.show('置顶便签与普通便签不能交叉排序', 'warning');
+            window.ModuleApp.Toast.show(tr('widget.pinNoteReorderWarn', '置顶便签与普通便签不能交叉排序', 'Pinned and unpinned notes cannot be mixed'), 'warning');
             dragSourceId = null;
             return;
           }
@@ -1817,7 +1879,7 @@
       if (rawDraft == null) return;
       const content = rawDraft.trim();
       if (!content) {
-        window.ModuleApp.Toast.show('便签内容不能为空，已取消修改', 'warning');
+        window.ModuleApp.Toast.show(tr('widget.noteEmptyCancelled', '便签内容不能为空，已取消修改', 'Note cannot be empty; edit cancelled'), 'warning');
         editingNoteId = null;
         editingNoteDraft = null;
         refresh();
@@ -1849,14 +1911,14 @@
             ? (curEl.innerText || curEl.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
             : (editingNoteDraft ?? rawDraft);
           if (!exists) {
-            saveRescueDraft({ type: 'note', id, title: '便签', content: latestRaw });
+            saveRescueDraft({ type: 'note', id, title: tr('widget.noteLabel', '便签', 'Note'), content: latestRaw });
             editingNoteId = null;
             editingNoteDraft = null;
-            window.ModuleApp.Toast.show('便签已被删除，内容已暂存到下方恢复栏', 'warning');
+            window.ModuleApp.Toast.show(tr('widget.noteDeletedStashedBelow', '便签已被删除，内容已暂存到下方恢复栏', 'Note was deleted; content stashed below'), 'warning');
             await refresh();
           } else {
             editingNoteDraft = latestRaw;
-            window.ModuleApp.Toast.show('保存失败，已保留编辑内容: ' + (err?.message || err), true);
+            window.ModuleApp.Toast.show(tr('widget.saveFailedKept', '保存失败，已保留编辑内容: {error}', 'Save failed, edits kept: {error}', { error: err?.message || err }), true);
           }
         }
       })();
@@ -1879,9 +1941,9 @@
       const d = new Date(iso);
       const now = new Date();
       const diff = (now - d) / 1000;
-      if (diff < 60) return '刚刚';
-      if (diff < 3600) return Math.floor(diff / 60) + '分钟前';
-      if (diff < 86400) return Math.floor(diff / 3600) + '小时前';
+      if (diff < 60) return tr('widget.justNow', '刚刚', 'Just now');
+      if (diff < 3600) return tr('widget.minutesAgo', '{n}分钟前', '{n}m ago', { n: Math.floor(diff / 60) });
+      if (diff < 86400) return tr('widget.hoursAgo', '{n}小时前', '{n}h ago', { n: Math.floor(diff / 3600) });
       return `${d.getMonth() + 1}/${d.getDate()}`;
     }
 
@@ -1900,6 +1962,12 @@
     const body = document.getElementById('widgetBody');
     _api.config.get().then(cfg => {
       if (cfg && cfg.theme) applyWidgetTheme(cfg.theme);
+      if (I18n) {
+        const prevLocale = I18n.getLocale();
+        const nextLocale = I18n.setLocale((cfg && cfg.language) || 'auto');
+        applyWidgetI18n();
+        if (nextLocale !== prevLocale) refresh();
+      }
       // 固定全局分拣：清空历史 widget 项目过滤
       widgetProjectScopeIds = [];
       if (Array.isArray(cfg?.widgetProjectScopeIds) && cfg.widgetProjectScopeIds.length > 0) {

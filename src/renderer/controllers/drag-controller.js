@@ -1,6 +1,24 @@
 // Module — 控制器：拖拽引擎 (Controller)
 (function() {
 
+  function tr(key, fallback, params) {
+    const I18n = window.ModuleApp && window.ModuleApp.I18n;
+    if (I18n && typeof I18n.t === 'function') {
+      if (typeof I18n.hasKey !== 'function' || I18n.hasKey(key)) {
+        return I18n.t(key, params);
+      }
+    }
+    let text = fallback || key;
+    if (params && typeof text === 'string') {
+      text = text.replace(/\{(\w+)\}/g, (m, k) =>
+        Object.prototype.hasOwnProperty.call(params, k) && params[k] !== undefined && params[k] !== null
+          ? String(params[k])
+          : m
+      );
+    }
+    return text;
+  }
+
   const DragController = {
 
     _state: null,
@@ -12,6 +30,114 @@
       this._state = stateRef;
       this._deps = deps;
       this.attachHandlers();
+    },
+
+    _resolveDropTarget(row, clientX, clientY, state) {
+      const targetId = row.dataset.id;
+      const Tc = window.ModuleApp.TaskController;
+      // 禁止读 DOM data-level：morphdom 增量后可能过期；一律从 parentId 链重算
+      const targetTask = state.tasks.find(x => x.id === targetId);
+      const targetLevel = Tc?.getTaskLevel?.(targetTask) ?? 0;
+      const rect = row.getBoundingClientRect();
+      const ratio = rect.height > 0 ? (clientY - rect.top) / rect.height : 0.5;
+      const scopeIds = state.projectScopeIds || [];
+      const isScopedProjectRoot = scopeIds.length > 0 && scopeIds.includes(targetId);
+
+      let parentId = null;
+      let level = targetLevel;
+      let visualClass = 'drag-over-child';
+      let indentPx = null;
+      let insertMode = 'first-child';
+      let afterTaskId = targetId;
+
+      if (ratio < 0.25) {
+        // 项目作用域下：对项目根的「上方同级」会变成全局顶层并消失 → 改为挂到该项目下
+        if (isScopedProjectRoot) {
+          parentId = targetId;
+          level = targetLevel + 1;
+          visualClass = 'drag-over-child';
+          insertMode = 'first-child';
+        } else {
+          parentId = targetTask ? targetTask.parentId : null;
+          level = targetLevel;
+          visualClass = 'drag-over-top';
+          insertMode = 'before';
+        }
+      } else if (ratio > 0.75) {
+        if (isScopedProjectRoot) {
+          parentId = targetId;
+          level = targetLevel + 1;
+          visualClass = 'drag-over-child';
+          insertMode = 'first-child';
+        } else {
+          const collapsedSet = state.collapsed || state.collapsedIds;
+          const isCollapsed = collapsedSet instanceof Set
+            ? collapsedSet.has(targetId)
+            : (Array.isArray(collapsedSet) ? collapsedSet.includes(targetId) : false);
+          const forceExpand = !!(state.search && state.search.trim());
+          const hasVisibleChildren = (forceExpand || !isCollapsed) &&
+            state.tasks.some(t => t.parentId === targetId && !t.completed);
+
+          if (hasVisibleChildren) {
+            // 展开的父任务下方紧邻其第一个子任务：落点应成为其第一个子任务
+            parentId = targetId;
+            level = targetLevel + 1;
+            visualClass = 'drag-over-bottom';
+            indentPx = (targetLevel + 1) * 20;
+            insertMode = 'first-child';
+          } else {
+            const offsetX = clientX - rect.left;
+            const baseIndentX = targetLevel * 20;
+            let finalIndent = targetLevel;
+            if (offsetX > baseIndentX + 36) {
+              finalIndent = targetLevel + 1;
+            } else if (offsetX < baseIndentX - 16 && targetLevel > 0) {
+              const stepsLeft = Math.floor((baseIndentX - offsetX + 16) / 20);
+              finalIndent = Math.max(0, targetLevel - Math.max(1, stepsLeft));
+            }
+            visualClass = 'drag-over-bottom';
+            indentPx = finalIndent * 20;
+
+            if (finalIndent > targetLevel) {
+              parentId = targetId;
+              level = targetLevel + 1;
+              insertMode = 'first-child';
+            } else {
+              const stepUp = targetLevel - finalIndent;
+              let cursorTask = targetTask;
+              let guard = 0;
+              while (cursorTask && cursorTask.parentId && guard < stepUp && guard < 10) {
+                cursorTask = state.tasks.find(t => t.id === cursorTask.parentId);
+                guard++;
+              }
+              parentId = cursorTask ? cursorTask.parentId : null;
+              level = finalIndent;
+              insertMode = 'after';
+              afterTaskId = cursorTask ? cursorTask.id : targetId;
+            }
+          }
+        }
+      } else {
+        parentId = targetId;
+        level = targetLevel + 1;
+        visualClass = 'drag-over-child';
+        insertMode = 'first-child';
+      }
+
+      return {
+        targetId,
+        targetTask,
+        targetLevel,
+        ratio,
+        scopeIds,
+        isScopedProjectRoot,
+        parentId,
+        level,
+        visualClass,
+        indentPx,
+        insertMode,
+        afterTaskId
+      };
     },
 
     attachHandlers() {
@@ -63,68 +189,19 @@
         const row = e.target.closest('.task-row[draggable="true"]');
         if (!row) return;
 
-        const rect = row.getBoundingClientRect();
-        const ratio = (e.clientY - rect.top) / rect.height;
         const state = this._state.state;
-        const targetId = row.dataset.id;
         const Tc = window.ModuleApp.TaskController;
-        // 禁止读 DOM data-level：morphdom 增量后可能过期；一律从 parentId 链重算
-        const targetTask = state.tasks.find(x => x.id === targetId);
-        const targetLevel = Tc?.getTaskLevel?.(targetTask) ?? 0;
+        const dropInfo = this._resolveDropTarget(row, e.clientX, e.clientY, state);
+        const { targetId, scopeIds, parentId: previewParentId, level: previewLevel, visualClass, indentPx } = dropInfo;
 
         document.querySelectorAll('.drag-over-top, .drag-over-bottom, .drag-over-child, .drag-over-invalid').forEach(el => {
           el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-child', 'drag-over-invalid');
           el.style.removeProperty('--drag-indent');
         });
 
-        let previewLevel = targetLevel;
-        let previewParentId = null;
-        const scopeIds = state.projectScopeIds || [];
-        const isScopedProjectRoot = scopeIds.length > 0 && scopeIds.includes(targetId);
-
-        if (ratio < 0.25) {
-          // 项目作用域下：对项目根的「上方同级」会变成全局顶层并消失 → 改为挂到该项目下
-          if (isScopedProjectRoot) {
-            previewParentId = targetId;
-            previewLevel = targetLevel + 1;
-            row.classList.add('drag-over-child');
-          } else {
-            const t = state.tasks.find(x => x.id === targetId);
-            previewParentId = t ? t.parentId : null;
-            previewLevel = targetLevel;
-            row.classList.add('drag-over-top');
-          }
-        } else if (ratio > 0.75) {
-          if (isScopedProjectRoot) {
-            previewParentId = targetId;
-            previewLevel = targetLevel + 1;
-            row.classList.add('drag-over-child');
-          } else {
-            row.classList.add('drag-over-bottom');
-            const offsetX = e.clientX - rect.left;
-            const xRatio = Math.max(0, Math.min(1, offsetX / rect.width));
-            const indentDelta = Math.round((1 - xRatio * 2) * 2) / 2;
-            const finalIndent = Math.max(0, Math.min(targetLevel, targetLevel + indentDelta));
-            row.style.setProperty('--drag-indent', finalIndent * 20 + 'px');
-            if (finalIndent > targetLevel) {
-              previewParentId = targetId;
-              previewLevel = targetLevel + 1;
-            } else {
-              previewLevel = targetLevel - Math.floor(targetLevel - finalIndent);
-              const stepUp = Math.floor(targetLevel - finalIndent);
-              let cursorTask = state.tasks.find(t => t.id === targetId);
-              let guard = 0;
-              while (cursorTask && cursorTask.parentId && stepUp - guard > 0 && guard < 10) {
-                cursorTask = state.tasks.find(t => t.id === cursorTask.parentId);
-                guard++;
-              }
-              previewParentId = cursorTask ? cursorTask.parentId : null;
-            }
-          }
-        } else {
-          previewParentId = targetId;
-          previewLevel = targetLevel + 1;
-          row.classList.add('drag-over-child');
+        row.classList.add(visualClass);
+        if (indentPx !== null) {
+          row.style.setProperty('--drag-indent', indentPx + 'px');
         }
 
         // 非法落点：超五级 / 拖到自身或后代 / 拖出当前项目作用域 → 红线禁投
@@ -178,7 +255,7 @@
           const sourceNote = state.notes.find(n => n.id === this._dragData.id);
           const targetNote = state.notes.find(n => n.id === targetId);
           if (!sourceNote || !targetNote || sourceNote.pinned !== targetNote.pinned) {
-            window.ModuleApp.Toast.show('置顶便签与普通便签不能交叉排序', 'warning');
+            window.ModuleApp.Toast.show(tr('toast.saveFailed', '置顶便签与普通便签不能交叉排序', { error: '' }), 'warning');
             this._dragData = null; return;
           }
 
@@ -211,73 +288,24 @@
         const targetRow = e.target.closest('.task-row[draggable="true"]');
         if (!targetRow) { this._dragData = null; return; }
 
-        const targetId = targetRow.dataset.id;
-        const Tc0 = window.ModuleApp.TaskController;
-        const targetTask0 = state.tasks.find(t => t.id === targetId);
-        // 与 dragover 一致：层级从数据重算，不信任 data-level
-        const targetLevel = Tc0?.getTaskLevel?.(targetTask0) ?? 0;
-        const rect = targetRow.getBoundingClientRect();
-        const ratio = (e.clientY - rect.top) / rect.height;
+        const dropInfo = this._resolveDropTarget(targetRow, e.clientX, e.clientY, state);
+        const { targetId, scopeIds, parentId: newParentId, level: newLevel } = dropInfo;
 
         document.querySelectorAll('.drag-over-top, .drag-over-bottom, .drag-over-child')
           .forEach(el => el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-child'));
 
         if (targetId === this._dragData.id) { this._dragData = null; return; }
         if (this._dragInvalid) {
-          window.ModuleApp.Toast.show('不能放到这里（层级超限或会形成环）', 'error');
+          window.ModuleApp.Toast.show(tr('hierarchy.maxLevelReached', '不能放到这里（层级超限或会形成环）'), 'error');
           this._dragData = null;
           this._dragInvalid = false;
           return;
         }
 
-        let newParentId = null, newLevel = 0;
-        const scopeIds = state.projectScopeIds || [];
-        const isScopedProjectRoot = scopeIds.length > 0 && scopeIds.includes(targetId);
-
-        if (ratio < 0.25) {
-          if (isScopedProjectRoot) {
-            // 项目视图里不能把任务拖成与项目根同级（会消失）；改为该项目的子任务
-            newParentId = targetId;
-            newLevel = targetLevel + 1;
-          } else {
-            const t = state.tasks.find(t => t.id === targetId);
-            newParentId = t ? t.parentId : null;
-            newLevel = targetLevel;
-          }
-        } else if (ratio > 0.75) {
-          if (isScopedProjectRoot) {
-            newParentId = targetId;
-            newLevel = targetLevel + 1;
-          } else {
-            const offsetX = e.clientX - rect.left;
-            const xRatio = Math.max(0, Math.min(1, offsetX / rect.width));
-            const finalIndent = Math.max(0, Math.min(targetLevel, targetLevel + Math.round((1 - xRatio * 2) * 2) / 2));
-            if (finalIndent > targetLevel) {
-              newParentId = targetId;
-              newLevel = targetLevel + 1;
-            } else {
-              // 使用 Math.floor 向下取整，消除 0.5 浮点数引发的幽灵升级
-              const stepUp = Math.floor(targetLevel - finalIndent);
-              let cursorTask = state.tasks.find(t => t.id === targetId);
-              let guard = 0;
-              while (cursorTask && cursorTask.parentId && stepUp - guard > 0 && guard < 10) {
-                cursorTask = state.tasks.find(t => t.id === cursorTask.parentId);
-                guard++;
-              }
-              newParentId = cursorTask ? cursorTask.parentId : null;
-              // 基于整数运算的绝对层级，免疫零点五干扰
-              newLevel = targetLevel - stepUp;
-            }
-          }
-        } else {
-          newParentId = targetId;
-          newLevel = targetLevel + 1;
-        }
-
         // 项目作用域：任何会拖出当前项目的落点一律拒绝（含左缩进升到全局顶层）
         const PS = window.ModuleApp.ProjectScope;
         if (PS && !PS.staysInProjectScope(state.tasks, scopeIds, newParentId)) {
-          window.ModuleApp.Toast.show('当前项目视图下不能移出该项目（会变成看不到的顶层任务）', 'warning');
+          window.ModuleApp.Toast.show(tr('hierarchy.maxLevelReached', '当前项目视图下不能移出该项目（会变成看不到的顶层任务）'), 'warning');
           this._dragData = null; return;
         }
 
@@ -287,11 +315,11 @@
 
         const maxLv = window.ModuleApp.Constants.MAX_LEVEL;
         if (newLevel + subtreeDepth > maxLv) {
-          window.ModuleApp.Toast.show('任务层级不能超过五级', 'error');
+          window.ModuleApp.Toast.show(tr('hierarchy.maxLevelReached', '任务层级不能超过五级'), 'error');
           this._dragData = null; return;
         }
         if (newParentId && newParentId === this._dragData.id) {
-          window.ModuleApp.Toast.show('不能将任务设为自己子任务', 'error');
+          window.ModuleApp.Toast.show(tr('hierarchy.maxLevelReached', '不能将任务设为自己子任务'), 'error');
           this._dragData = null; return;
         }
 
@@ -302,7 +330,7 @@
           while (cursor && !visited.has(cursor)) {
             visited.add(cursor);
             if (cursor === this._dragData.id) {
-              window.ModuleApp.Toast.show('不能将任务拖到后代下', 'error');
+              window.ModuleApp.Toast.show(tr('hierarchy.maxLevelReached', '不能将任务拖到后代下'), 'error');
               this._dragData = null; return;
             }
             const p = state.tasks.find(t => t.id === cursor);
@@ -315,19 +343,20 @@
         const siblings = state.tasks
           .filter(t => t.parentId === newParentId && t.id !== this._dragData.id)
           .sort((a, b) => (a.order || 0) - (b.order || 0));
-        const targetTask = state.tasks.find(t => t.id === targetId);
-        const targetOrder = targetTask ? (targetTask.order || 0) : 0;
         let newOrder = 0;
 
         if (siblings.length !== 0) {
-          if (ratio < 0.25) {
+          if (dropInfo.insertMode === 'before') {
             const idx = siblings.findIndex(s => s.id === targetId);
-            newOrder = idx <= 0 ? (siblings[0].order || 0) - 0.5 : (((siblings[idx - 1].order || 0) + targetOrder) / 2);
-          } else if (ratio > 0.75) {
-            const idx = siblings.findIndex(s => s.id === targetId);
+            const refOrder = idx >= 0 ? (siblings[idx].order || 0) : (siblings[0].order || 0);
+            newOrder = idx <= 0 ? refOrder - 0.5 : (((siblings[idx - 1].order || 0) + refOrder) / 2);
+          } else if (dropInfo.insertMode === 'after') {
+            const refId = dropInfo.afterTaskId || targetId;
+            const idx = siblings.findIndex(s => s.id === refId);
+            const refOrder = idx >= 0 ? (siblings[idx].order || 0) : (siblings[siblings.length - 1].order || 0);
             newOrder = (idx === -1 || idx >= siblings.length - 1)
-              ? ((siblings[siblings.length - 1].order || 0) + 1)
-              : ((targetOrder + (siblings[idx + 1].order || 0)) / 2);
+              ? (refOrder + 1)
+              : ((refOrder + (siblings[idx + 1].order || 0)) / 2);
           } else {
             newOrder = (siblings[0].order || 0) - 0.5;
           }
@@ -350,9 +379,9 @@
             this._deps.render();
           }
           await this._deps.refreshUndoUI();
-          window.ModuleApp.Toast.show('已调整层级', 'success');
+          window.ModuleApp.Toast.show(tr('toast.taskUpdated', '已调整层级'), 'success');
         } catch (err) {
-          window.ModuleApp.Toast.show('调整失败：' + err.message, 'error');
+          window.ModuleApp.Toast.show(tr('toast.saveFailed', '调整失败：{error}', { error: err.message }), 'error');
         } finally {
           this._dragData = null;
         }

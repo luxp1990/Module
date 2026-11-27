@@ -12,6 +12,7 @@
   };
 
   const _gvs = () => ganttViewState;
+  const _L = (zh, en) => (window.ModuleApp?.I18n?.getLocale?.() === 'en-US' ? en : zh);
 
   const ZOOM_LEVELS = [0.5, 0.75, 1, 1.5, 2];
   const DEFAULT_ZOOM_INDEX = 2;
@@ -70,7 +71,8 @@
         const data = await _api.gantt.data();
         if (isStale()) return;
         if (!data || data.length === 0) {
-          container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">没有可显示的任务</div><div class="empty-state-hint">新建任务后即可在甘特图中查看</div></div>';
+          const I18n = window.ModuleApp?.I18n;
+          container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">${I18n?.t('gantt.empty') || '没有可显示的任务'}</div><div class="empty-state-hint">${_L('新建任务后即可在甘特图中查看', 'Create a task to view it on the Gantt chart')}</div></div>`;
           return;
         }
 
@@ -82,7 +84,8 @@
         let tasks = data.filter(t => t.content);
         if (vis) tasks = tasks.filter(t => vis.has(t.id));
         if (tasks.length === 0) {
-          container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">该项目下没有可显示的任务</div><div class="empty-state-hint">切换「全部项目」或新建任务</div></div>';
+          const I18n = window.ModuleApp?.I18n;
+          container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">${I18n?.t('hierarchy.emptyFiltered') || '该项目下没有可显示的任务'}</div><div class="empty-state-hint">${_L('切换「全部项目」或新建任务', 'Switch to "All Projects" or create a task')}</div></div>`;
           return;
         }
 
@@ -167,12 +170,13 @@
         const rows = visibleTasks.map(t => _makeGanttRow(t, minDate, totalDays, dayWidth, today, todayDay, todayColLeft, showTodayLine, ganttOffsetPx, ganttWeekPx, hasGanttChildren)).join('');
         const headerHTML = _generateGanttHeader(minDate, totalDays, dayWidth, todayDay, showTodayLine, todayColLeft, ganttOffsetPx, ganttWeekPx);
 
+        const I18n = window.ModuleApp?.I18n;
         const legendHidden = localStorage.getItem('gantt-legend-hidden') === '1';
-        const legendContentHTML = `<span class="gantt-legend-title">层级</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#2563eb"></span>主任务</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#7c3aed"></span>一级子任务</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#0ea5e9"></span>二级子任务</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#10b981"></span>三级子任务</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#f97316"></span>四级子任务</span><span class="gantt-legend-sep"></span><span class="gantt-legend-title">状态</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#6366f1"></span>正常</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#f59e0b"></span>即将到期</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#ef4444"></span>已延期</span><span class="gantt-legend-sep"></span><span class="gantt-legend-item"><span class="gantt-legend-dot gantt-legend-today"></span>今天</span>`;
+        const legendContentHTML = `<span class="gantt-legend-title">${_L('层级', 'Level')}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#2563eb"></span>${_L('主任务', 'Main')}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#7c3aed"></span>${_L('一级子任务', 'L1')}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#0ea5e9"></span>${_L('二级子任务', 'L2')}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#10b981"></span>${_L('三级子任务', 'L3')}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#f97316"></span>${_L('四级子任务', 'L4')}</span><span class="gantt-legend-sep"></span><span class="gantt-legend-title">${I18n?.t('status.label') || '状态'}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#6366f1"></span>${_L('正常', 'On Track')}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#f59e0b"></span>${_L('即将到期', 'Due Soon')}</span><span class="gantt-legend-item"><span class="gantt-legend-dot" style="background:#ef4444"></span>${_L('已延期', 'Overdue')}</span><span class="gantt-legend-sep"></span><span class="gantt-legend-item"><span class="gantt-legend-dot gantt-legend-today"></span>${I18n?.t('gantt.today') || '今天'}</span>`;
 
-        const toolbarHTML = `<button class="gantt-zoom-btn" data-gantt-action="export-svg" title="导出SVG" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📐 SVG</button><button class="gantt-nav-btn" id="ganttPrevWeek" data-gantt-action="prevWeek" title="上一周 (←)">← 一周</button><button class="gantt-nav-btn today" id="ganttTodayBtn" data-gantt-action="today" title="回到今天 (T)">今天</button><button class="gantt-nav-btn" id="ganttNextWeek" data-gantt-action="nextWeek" title="下一周 (→)">一周 →</button><span class="gantt-toolbar-divider"></span><button class="gantt-date-preset-btn" id="ganttWeek" data-gantt-action="preset-week">本周</button><button class="gantt-date-preset-btn" id="ganttMonth" data-gantt-action="preset-month">本月</button><button class="gantt-date-preset-btn" id="ganttQuarter" data-gantt-action="preset-quarter">季度</button><span class="gantt-toolbar-divider"></span><button class="gantt-zoom-btn" id="ganttZoomOut" data-gantt-action="zoom-out" title="缩小 (-)">−</button><span class="gantt-zoom-level" id="ganttZoomLevel">${Math.round(gvs.zoomLevel * 100)}%</span><button class="gantt-zoom-btn" id="ganttZoomIn" data-gantt-action="zoom-in" title="放大 (+)">+</button><span class="gantt-toolbar-divider"></span><button class="gantt-zoom-btn" data-gantt-action="export-img" title="导出PNG" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📷 PNG</button><button class="gantt-zoom-btn" data-gantt-action="export-excel" title="导出带时间轴与层级配色的 Excel 工作簿 (.xlsx)" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📊 Excel</button><button class="gantt-zoom-btn" data-gantt-action="export-csv" title="导出纯文本 CSV 任务表 (.csv)" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📄 CSV</button><div style="margin-left:auto;font-size:10px;color:var(--fg-soft);">← → 导航周 · T 今天 · +/- 缩放</div>`;
+        const toolbarHTML = `<button class="gantt-zoom-btn" data-gantt-action="export-svg" title="${_L('导出SVG', 'Export SVG')}" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📐 SVG</button><button class="gantt-nav-btn" id="ganttPrevWeek" data-gantt-action="prevWeek" title="${_L('上一周 (←)', 'Previous Week (←)')}">${_L('← 一周', '← Week')}</button><button class="gantt-nav-btn today" id="ganttTodayBtn" data-gantt-action="today" title="${_L('回到今天 (T)', 'Today (T)')}">${I18n?.t('gantt.today') || '今天'}</button><button class="gantt-nav-btn" id="ganttNextWeek" data-gantt-action="nextWeek" title="${_L('下一周 (→)', 'Next Week (→)')}">${_L('一周 →', 'Week →')}</button><span class="gantt-toolbar-divider"></span><button class="gantt-date-preset-btn" id="ganttWeek" data-gantt-action="preset-week">${I18n?.t('reports.currentWeek') || '本周'}</button><button class="gantt-date-preset-btn" id="ganttMonth" data-gantt-action="preset-month">${_L('本月', 'Month')}</button><button class="gantt-date-preset-btn" id="ganttQuarter" data-gantt-action="preset-quarter">${I18n?.t('gantt.zoomQuarter') || '季度'}</button><span class="gantt-toolbar-divider"></span><button class="gantt-zoom-btn" id="ganttZoomOut" data-gantt-action="zoom-out" title="${_L('缩小 (-)', 'Zoom Out (-)')}">−</button><span class="gantt-zoom-level" id="ganttZoomLevel">${Math.round(gvs.zoomLevel * 100)}%</span><button class="gantt-zoom-btn" id="ganttZoomIn" data-gantt-action="zoom-in" title="${_L('放大 (+)', 'Zoom In (+)')}">+</button><span class="gantt-toolbar-divider"></span><button class="gantt-zoom-btn" data-gantt-action="export-img" title="${I18n?.t('gantt.exportImage') || '导出PNG'}" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📷 PNG</button><button class="gantt-zoom-btn" data-gantt-action="export-excel" title="${I18n?.t('gantt.exportExcel') || '导出带时间轴与层级配色的 Excel 工作簿 (.xlsx)'}" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📊 Excel</button><button class="gantt-zoom-btn" data-gantt-action="export-csv" title="${I18n?.t('gantt.exportCsv') || '导出纯文本 CSV 任务表 (.csv)'}" style="font-size:11px;font-weight:700;padding:0 10px;width:auto;">📄 CSV</button><div style="margin-left:auto;font-size:10px;color:var(--fg-soft);">${_L('← → 导航周 · T 今天 · +/- 缩放', '← → Week · T Today · +/- Zoom')}</div>`;
 
-        const html = `<div class="gantt-toolbar gantt-toolbar-enhanced" style="border-radius:12px 12px 0 0;">${toolbarHTML}</div><div class="gantt-wrap"><div class="gantt-container" id="ganttContainer" style="position:relative;min-width:${260 + totalDays * dayWidth}px;border-radius:0;"><div class="gantt-scroll-hint" id="ganttScrollHint"></div>${headerHTML}<div class="gantt-body" id="ganttBody">${rows}</div></div></div><div class="gantt-legend-wrap" style="border-radius:0 0 12px 12px;"><div class="gantt-legend ${legendHidden ? 'hidden' : ''}" id="ganttLegend">${legendContentHTML}</div><button class="gantt-legend-toggle" id="ganttLegendToggle">${legendHidden ? '显示图例' : '隐藏图例'}</button></div>`;
+        const html = `<div class="gantt-toolbar gantt-toolbar-enhanced" style="border-radius:12px 12px 0 0;">${toolbarHTML}</div><div class="gantt-wrap"><div class="gantt-container" id="ganttContainer" style="position:relative;min-width:${260 + totalDays * dayWidth}px;border-radius:0;"><div class="gantt-scroll-hint" id="ganttScrollHint"></div>${headerHTML}<div class="gantt-body" id="ganttBody">${rows}</div></div></div><div class="gantt-legend-wrap" style="border-radius:0 0 12px 12px;"><div class="gantt-legend ${legendHidden ? 'hidden' : ''}" id="ganttLegend">${legendContentHTML}</div><button class="gantt-legend-toggle" id="ganttLegendToggle">${legendHidden ? _L('显示图例', 'Show Legend') : _L('隐藏图例', 'Hide Legend')}</button></div>`;
 
         // morphdom 增量更新：只有当缩放、折叠、导航（centerDate/presetMode）都没变时才走增量分支。
         // 折叠状态变化会导致 visibleTasks 数量变化，rows 长度变化，morphdom 能
@@ -187,10 +191,13 @@
         const prevPresetMode = gvs._lastPresetMode;
         const navChanged = !prevCenterDate ? (gvs.centerDate !== null) : (gvs.centerDate && gvs.centerDate.getTime() !== prevCenterDate.getTime());
         const presetChanged = prevPresetMode !== gvs.presetMode;
-        const fullRebuild = !existingBody || zoomChanged || collapsedChanged || navChanged || presetChanged;
+        const curLocale = I18n?.getLocale?.() || null;
+        const localeChanged = gvs._lastLocale !== undefined && gvs._lastLocale !== curLocale;
+        const fullRebuild = !existingBody || zoomChanged || collapsedChanged || navChanged || presetChanged || localeChanged;
         gvs._lastCollapsedSig = collapsedSig;
         gvs._lastCenterDate = gvs.centerDate ? new Date(gvs.centerDate) : null;
         gvs._lastPresetMode = gvs.presetMode;
+        gvs._lastLocale = curLocale;
 
         if (!fullRebuild) {
           _patchGanttBody(existingBody, rows);
@@ -209,7 +216,7 @@
       } catch (err) {
         if (isStale()) return;
         console.error('[GanttView.render] 错误:', err);
-        container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">甘特图渲染失败</div><div class="empty-state-hint" style="color:#ef4444;font-family:monospace;font-size:11px;">${String(err)}</div></div>`;
+        container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">${_L('甘特图渲染失败', 'Failed to render Gantt chart')}</div><div class="empty-state-hint" style="color:#ef4444;font-family:monospace;font-size:11px;">${_escapeHtml(String(err))}</div></div>`;
       }
     },
 
@@ -279,7 +286,7 @@
           const t = state.tasks.find(x => x.id === jumpEl.dataset.ganttJump);
           if (!t) return;
           const startStr = t.startDate || t.start;
-          if (!startStr) { window.ModuleApp.Toast.show('该任务没有日期，无法对齐', 'warning'); return; }
+          if (!startStr) { window.ModuleApp.Toast.show(window.ModuleApp?.I18n?.t('gantt.noDates') || '该任务没有日期，无法对齐', 'warning'); return; }
           const [yy, mm2, dd2] = startStr.split('-').map(Number);
           const targetDate = new Date(yy, mm2 - 1, dd2);
           targetDate.setHours(0, 0, 0, 0);
@@ -318,11 +325,11 @@
           const isHidden = legend.classList.contains('hidden');
           if (isHidden) {
             legend.classList.remove('hidden');
-            target.textContent = '隐藏图例';
+            target.textContent = _L('隐藏图例', 'Hide Legend');
             localStorage.setItem('gantt-legend-hidden', '0');
           } else {
             legend.classList.add('hidden');
-            target.textContent = '显示图例';
+            target.textContent = _L('显示图例', 'Show Legend');
             localStorage.setItem('gantt-legend-hidden', '1');
           }
           return;
@@ -434,14 +441,15 @@
     const barH = displayLevel === 0 ? 28 : 20;
 
     let badge = '';
+    const I18n = window.ModuleApp?.I18n;
     if (t.end) {
       const [ey, em, ed] = t.end.split('-').map(Number);
       const ed2 = new Date(ey, em - 1, ed);
       const diff = Math.round((ed2 - today) / 86400000);
-      if (diff < 0) badge = `<span class="gantt-task-deadline-badge danger">逾期${Math.abs(diff)}天</span>`;
-      else if (diff === 0) badge = `<span class="gantt-task-deadline-badge warning">今天</span>`;
-      else if (diff === 1) badge = `<span class="gantt-task-deadline-badge warning">明天</span>`;
-      else if (diff <= 7) badge = `<span class="gantt-task-deadline-badge warning">${diff}天后</span>`;
+      if (diff < 0) badge = `<span class="gantt-task-deadline-badge danger">${I18n?.t('deadline.daysOverdue', { days: Math.abs(diff) }) || `逾期${Math.abs(diff)}天`}</span>`;
+      else if (diff === 0) badge = `<span class="gantt-task-deadline-badge warning">${I18n?.t('deadline.today') || '今天'}</span>`;
+      else if (diff === 1) badge = `<span class="gantt-task-deadline-badge warning">${I18n?.t('deadline.tomorrow') || '明天'}</span>`;
+      else if (diff <= 7) badge = `<span class="gantt-task-deadline-badge warning">${I18n?.t('deadline.daysLeft', { days: diff }) || `${diff}天后`}</span>`;
     }
 
     const isCollapsed = state.collapsed.has(t.id);
@@ -449,7 +457,7 @@
     const collapseIcon = hasKids ? `<span class="gantt-collapse-toggle" data-collapse="${t.id}">${isCollapsed ? '▶' : '▼'}</span>` : '';
 
     if (!t.start || !t.end) {
-      return `<div class="gantt-row gantt-row-no-date" data-task-id="${t.id}"><div class="gantt-task-name" data-gantt-jump="${t.id}" style="padding-left:${indent + 12}px;cursor:pointer;background:var(--bg-card);">${collapseIcon}<span class="gantt-level-dot level-${displayLevel}"></span><span class="gantt-task-name-text">${_escapeHtml(t.content)}</span><span class="gantt-task-no-date-hint">无日期</span></div><div class="gantt-track" style="width:${VIEW_WIDTH}px;"></div></div>`;
+      return `<div class="gantt-row gantt-row-no-date" data-task-id="${t.id}"><div class="gantt-task-name" data-gantt-jump="${t.id}" style="padding-left:${indent + 12}px;cursor:pointer;">${collapseIcon}<span class="gantt-level-dot level-${displayLevel}"></span><span class="gantt-task-name-text">${_escapeHtml(t.content)}</span><span class="gantt-task-no-date-hint">${I18n?.t('gantt.noDates') || '无日期'}</span></div><div class="gantt-track" style="width:${VIEW_WIDTH}px;"></div></div>`;
     }
 
     const [sy, sm, sd] = t.start.split('-').map(Number);
@@ -475,16 +483,17 @@
     bgLayers.push(`repeating-linear-gradient(to right, transparent 0, transparent ${5*dayWidth}px, rgba(0,0,0,0.03) ${5*dayWidth}px, rgba(0,0,0,0.03) ${7*dayWidth}px)`);
     const trackStyle = `width:${VIEW_WIDTH}px;background-image:${bgLayers.join(',')};background-position:0 0, ${ganttOffsetPx}px 0;background-size:100% 100%, ${ganttWeekPx}px 100%;`;
 
-    return `<div class="gantt-row" data-task-id="${t.id}"><div class="gantt-task-name" data-gantt-jump="${t.id}" style="padding-left:${indent + 12}px;cursor:pointer;background:var(--bg-card);">${collapseIcon}<span class="gantt-level-dot level-${displayLevel}"></span><span class="gantt-task-name-text">${_escapeHtml(t.content)}</span>${badge}</div><div class="gantt-track" style="${trackStyle}"><div class="gantt-bar ${statusCls}" data-task-id="${t.id}" style="left:${left}px;top:${barTop}px;width:${width}px;height:${barH}px;background:${barBg};"></div></div></div>`;
+    return `<div class="gantt-row" data-task-id="${t.id}"><div class="gantt-task-name" data-gantt-jump="${t.id}" style="padding-left:${indent + 12}px;cursor:pointer;">${collapseIcon}<span class="gantt-level-dot level-${displayLevel}"></span><span class="gantt-task-name-text">${_escapeHtml(t.content)}</span>${badge}</div><div class="gantt-track" style="${trackStyle}"><div class="gantt-bar ${statusCls}" data-task-id="${t.id}" style="left:${left}px;top:${barTop}px;width:${width}px;height:${barH}px;background:${barBg};"></div></div></div>`;
   }
 
   function _generateGanttHeader(minDate, totalDays, dayWidth, todayDay, showTodayLine, todayColLeft, ganttOffsetPx, ganttWeekPx) {
     const isWeekendDay = window.ModuleApp.Utils ? window.ModuleApp.Utils.isWeekendDay : (d => d.getDay() === 0 || d.getDay() === 6);
-    const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+    const I18n = window.ModuleApp?.I18n;
+    const weekdays = (I18n && Array.isArray(I18n.t('datePicker.weekdaysShort'))) ? I18n.t('datePicker.weekdaysShort') : ['一', '二', '三', '四', '五', '六', '日'];
 
     let html = `<div class="gantt-header" style="height:70px;">`;
-    html += `<div class="gantt-header-name-cell" style="display:flex;align-items:flex-end;padding:0 16px 8px;font-size:10px;color:var(--fg-soft);letter-spacing:0.5px;font-weight:700;">任务名称</div>`;
-    const trackHeaderStyle = `width:${totalDays * dayWidth}px;overflow:visible;position:relative;background-position:${ganttOffsetPx}px 26px, ${ganttOffsetPx - dayWidth}px 26px;background-size:${ganttWeekPx}px 100%, ${ganttWeekPx}px 100%;background-image:repeating-linear-gradient(to right, transparent 0, transparent ${5*dayWidth}px, #fef2f2 ${5*dayWidth}px, #fef2f2 ${7*dayWidth}px),repeating-linear-gradient(to right, transparent 0, transparent ${6*dayWidth}px, var(--line) ${6*dayWidth}px, var(--line) ${6*dayWidth + 1}px, transparent ${6*dayWidth + 1}px, transparent ${7*dayWidth}px);background-repeat:repeat, repeat;`;
+    html += `<div class="gantt-header-name-cell" style="display:flex;align-items:flex-end;padding:0 16px 8px;font-size:10px;color:var(--fg-soft);letter-spacing:0.5px;font-weight:700;">${I18n?.t('gantt.taskName') || '任务名称'}</div>`;
+    const trackHeaderStyle = `width:${totalDays * dayWidth}px;overflow:visible;position:relative;background-position:${ganttOffsetPx}px 26px, ${ganttOffsetPx - dayWidth}px 26px;background-size:${ganttWeekPx}px 100%, ${ganttWeekPx}px 100%;background-image:repeating-linear-gradient(to right, transparent 0, transparent ${5*dayWidth}px, var(--gantt-weekend-bg, #fef2f2) ${5*dayWidth}px, var(--gantt-weekend-bg, #fef2f2) ${7*dayWidth}px),repeating-linear-gradient(to right, transparent 0, transparent ${6*dayWidth}px, var(--line) ${6*dayWidth}px, var(--line) ${6*dayWidth + 1}px, transparent ${6*dayWidth + 1}px, transparent ${7*dayWidth}px);background-repeat:repeat, repeat;`;
     html += `<div class="gantt-track-header" style="${trackHeaderStyle}">`;
 
     // P2-10 修复：用 Set 替代 Array.includes（O(1) vs O(n)）+ 缓存 new Date()（避免循环内重复调用）
@@ -504,7 +513,11 @@
       }
       const left = i * dayWidth;
       const width = (lastSame - i + 1) * dayWidth;
-      const label = d.getMonth() === 0 ? `${d.getFullYear()}年1月` : `${d.getMonth() + 1}月`;
+      const isEn = I18n?.getLocale?.() === 'en-US';
+      const enMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const label = isEn
+        ? (d.getMonth() === 0 ? `${d.getFullYear()} Jan` : enMonths[d.getMonth()])
+        : (d.getMonth() === 0 ? `${d.getFullYear()}年1月` : `${d.getMonth() + 1}月`);
       const isCurrentMonth = d.getMonth() === nowMonth && d.getFullYear() === nowYear;
       html += `<span class="gantt-month-label" style="left:${left}px;width:${width}px;text-align:${i === 0 ? 'left' : 'center'};padding-left:${i === 0 ? '4px' : '0'};color:${isCurrentMonth ? 'var(--primary)' : 'inherit'}">${label}</span>`;
       if (lastSame < totalDays - 1) html += `<span class="gantt-month-sep" style="left:${(lastSame + 1) * dayWidth}px"></span>`;
@@ -552,18 +565,28 @@
       if (!t) return;
       const rawEnd = t.end || t.deadline;
       const today = new Date(); today.setHours(0,0,0,0);
+      const I18n = window.ModuleApp?.I18n;
       let diffText = '';
+      let statusClass = '';
       if (rawEnd) {
         const [yy, mm2, dd2] = rawEnd.split('-').map(Number);
         const ed2 = new Date(yy, mm2 - 1, dd2);
         const diff = Math.round((ed2 - today) / 86400000);
-        diffText = diff < 0 ? `⚠ 已逾期 ${Math.abs(diff)} 天` : diff === 0 ? '⏰ 今天截止' : `剩余 ${diff} 天`;
+        if (diff < 0) {
+          statusClass = 'overdue';
+          diffText = '⚠ ' + (I18n?.t('deadline.daysOverdue', { days: Math.abs(diff) }) || `已逾期 ${Math.abs(diff)} 天`);
+        } else if (diff === 0) {
+          statusClass = 'due-soon';
+          diffText = '⏰ ' + (I18n?.t('deadline.dueToday') || '今天截止');
+        } else {
+          diffText = I18n?.t('deadline.daysLeft', { days: diff }) || `剩余 ${diff} 天`;
+        }
       }
       const notesHtml = t.notes ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.15);font-size:11px;opacity:0.8;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${_escapeHtml(t.notes)}</div>` : '';
       const tip = document.createElement('div');
       tip.className = 'gantt-tooltip';
       tip.dataset.taskId = taskId;
-      tip.innerHTML = `<div class="gantt-tooltip-title">${_escapeHtml(t.content)}</div>${t.startDate ? `<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">开始</span><span>${t.startDate}</span></div>` : ''}${t.deadline ? `<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">截止</span><span>${t.deadline}</span></div>` : ''}${diffText ? `<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">状态</span><span class="gantt-tooltip-status ${diffText.includes('逾期') ? 'overdue' : diffText.includes('今天') ? 'due-soon' : ''}">${diffText}</span></div>` : ''}${notesHtml}`;
+      tip.innerHTML = `<div class="gantt-tooltip-title">${_escapeHtml(t.content)}</div>${t.startDate ? `<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">${I18n?.t('gantt.startDate') || '开始'}</span><span>${t.startDate}</span></div>` : ''}${t.deadline ? `<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">${I18n?.t('gantt.endDate') || '截止'}</span><span>${t.deadline}</span></div>` : ''}${diffText ? `<div class="gantt-tooltip-row"><span class="gantt-tooltip-label">${I18n?.t('status.label') || '状态'}</span><span class="gantt-tooltip-status ${statusClass}">${diffText}</span></div>` : ''}${notesHtml}`;
       document.body.appendChild(tip);
       _activeTip = tip;
       _positionTip(e, tip);
@@ -651,17 +674,17 @@
   async function _exportGanttSVG() {
     try {
       const ganttContainer = document.querySelector('.gantt-container');
-      if (!ganttContainer) throw new Error('找不到甘特图容器');
+      if (!ganttContainer) throw new Error(_L('找不到甘特图容器', 'Gantt container not found'));
 
       const rect = ganttContainer.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) throw new Error('甘特图尺寸为零');
+      if (rect.width === 0 || rect.height === 0) throw new Error(_L('甘特图尺寸为零', 'Gantt chart has zero size'));
       // Chrome SVG canvas 硬限：宽/高 ≤ 32,767px
       if (rect.width > 32000 || rect.height > 32000) {
-        window.ModuleApp.Toast.show('⚠️ 甘特图跨度过大，请使用 Excel 导出', 'error');
+        window.ModuleApp.Toast.show(_L('⚠️ 甘特图跨度过大，请使用 Excel 导出', '⚠️ Gantt span too large, please export to Excel'), 'error');
         return;
       }
 
-      window.ModuleApp.Toast.show('正在生成 SVG，请稍候...', 'info');
+      window.ModuleApp.Toast.show(_L('正在生成 SVG，请稍候...', 'Generating SVG, please wait...'), 'info');
 
       // 克隆甘特图容器（含 header + body）
       const clone = ganttContainer.cloneNode(true);
@@ -704,16 +727,16 @@
       a.href = url;
       const now = new Date();
       const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      a.download = `Module_甘特图_${stamp}.svg`;
+      a.download = _L(`Module_甘特图_${stamp}.svg`, `Module_Gantt_${stamp}.svg`);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      window.ModuleApp.Toast.show('✅ SVG 已下载', 'success');
+      window.ModuleApp.Toast.show(_L('✅ SVG 已下载', '✅ SVG downloaded'), 'success');
     } catch (err) {
       console.error('[exportGanttSVG] 失败:', err);
-      window.ModuleApp.Toast.show('SVG 导出失败，尝试 PNG 导出...', 'warning');
+      window.ModuleApp.Toast.show(_L('SVG 导出失败，尝试 PNG 导出...', 'SVG export failed, trying PNG...'), 'warning');
       _exportGanttImage();
     }
   }
@@ -721,6 +744,23 @@
   // 收集所有 .gantt-* 相关的 CSS 规则，使 SVG 脱离宿主 CSS 后仍能正确渲染
   function _collectGanttStyles() {
     let css = '';
+    const bodyStyle = getComputedStyle(document.body);
+    const vars = [
+      '--bg', '--bg-card', '--bg-hover', '--fg', '--fg-muted', '--fg-soft',
+      '--line', '--line-strong', '--primary', '--primary-hover', '--primary-soft',
+      '--success', '--warning', '--warning-bg', '--danger', '--danger-bg',
+      '--info', '--info-bg', '--shadow', '--shadow-md', '--radius', '--radius-sm',
+      '--gantt-weekend-bg'
+    ];
+    const resolvedVars = vars
+      .map(v => {
+        const val = bodyStyle.getPropertyValue(v).trim();
+        return val ? `${v}:${val};` : '';
+      })
+      .filter(Boolean)
+      .join('');
+    if (resolvedVars) css += `:root{${resolvedVars}}\n`;
+
     try {
       for (const sheet of document.styleSheets) {
         try {
@@ -732,7 +772,7 @@
       }
     } catch (_) {}
     // 兜底背景色
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim() || '#1a1d21';
+    const bg = bodyStyle.getPropertyValue('--bg-card').trim() || '#ffffff';
     css += `.gantt-container{background:${bg};font-family:system-ui,-apple-system,sans-serif;}\n`;
     return css;
   }
@@ -749,29 +789,40 @@
       let renderScale = 2;
       if (scrollW > 15000) renderScale = 1;
       if (scrollW > 30000) {
-        window.ModuleApp.Toast.show('⚠️ 甘特图跨度过大，已超出浏览器绘图极限，请使用 Excel 导出', 'error');
+        window.ModuleApp.Toast.show(_L('⚠️ 甘特图跨度过大，已超出浏览器绘图极限，请使用 Excel 导出', '⚠️ Gantt span exceeds browser canvas limit, please use Excel export'), 'error');
         return;
       }
-      if (scrollW > 8000) window.ModuleApp.Toast.show('⚠️ 甘特图跨度过大，建议缩小缩放或使用 Excel 导出！', 'warning', 5000);
-      window.ModuleApp.Toast.show('正在生成高分辨率图片，请稍候...', 'info');
+      if (scrollW > 8000) window.ModuleApp.Toast.show(_L('⚠️ 甘特图跨度过大，建议缩小缩放或使用 Excel 导出！', '⚠️ Gantt span is large, consider zooming out or using Excel export!'), 'warning', 5000);
+      window.ModuleApp.Toast.show(_L('正在生成高分辨率图片，请稍候...', 'Generating high-res image, please wait...'), 'info');
 
       const toolbar = document.querySelector('.gantt-toolbar');
       const legend = document.querySelector('.gantt-legend');
       const origToolbar = toolbar ? toolbar.style.display : '';
       const origLegend = legend ? legend.style.display : '';
-      const stickyEls = document.querySelectorAll('.gantt-header-name-cell, .gantt-task-name');
+      const stickyEls = document.querySelectorAll('.gantt-header-name-cell, .gantt-task-name, .gantt-header, .gantt-track-header');
       const origPos = [];
       stickyEls.forEach((el, i) => { origPos[i] = el.style.position; el.style.position = 'static'; });
+      const origWrapOverflow = ganttWrap ? ganttWrap.style.overflow : '';
+      const origWrapMaxHeight = ganttWrap ? ganttWrap.style.maxHeight : '';
+      const origScrollLeft = ganttWrap ? ganttWrap.scrollLeft : 0;
+      const origScrollTop = ganttWrap ? ganttWrap.scrollTop : 0;
+      if (ganttWrap) {
+        ganttWrap.style.overflow = 'visible';
+        ganttWrap.style.maxHeight = 'none';
+        ganttWrap.scrollLeft = 0;
+        ganttWrap.scrollTop = 0;
+      }
       if (toolbar) toolbar.style.display = 'none';
       if (legend) legend.style.display = 'none';
 
       let arrayBuffer = null;
       try {
-        if (typeof html2canvas === 'undefined') throw new Error('html2canvas 未加载');
+        if (typeof html2canvas === 'undefined') throw new Error(_L('html2canvas 未加载', 'html2canvas not loaded'));
         const ganttContainer = document.querySelector('.gantt-wrap');
-        if (!ganttContainer) throw new Error('找不到甘特图容器');
+        if (!ganttContainer) throw new Error(_L('找不到甘特图容器', 'Gantt container not found'));
+        const bgColor = getComputedStyle(document.body).getPropertyValue('--bg-card').trim() || (document.body.classList.contains('theme-dark') ? '#1e293b' : '#ffffff');
         const canvas = await html2canvas(ganttContainer, {
-          backgroundColor: document.body.classList.contains('theme-dark') ? '#1a1d21' : '#ffffff',
+          backgroundColor: bgColor,
           scale: renderScale, useCORS: true, logging: false,
         });
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -780,40 +831,50 @@
         if (toolbar) toolbar.style.display = origToolbar;
         if (legend) legend.style.display = origLegend;
         stickyEls.forEach((el, i) => { el.style.position = origPos[i] || ''; });
+        if (ganttWrap) {
+          ganttWrap.style.overflow = origWrapOverflow;
+          ganttWrap.style.maxHeight = origWrapMaxHeight;
+          ganttWrap.scrollLeft = origScrollLeft;
+          ganttWrap.scrollTop = origScrollTop;
+        }
       }
 
       if (arrayBuffer) {
         const result = await _api.gantt.writeImageBuffer(savePath, arrayBuffer, token);
-        if (result.success) window.ModuleApp.Toast.show('✅ 图片已保存', 'success');
-        else window.ModuleApp.Toast.show('❌ ' + (result.error || '保存失败'), 'error');
+        const I18n = window.ModuleApp?.I18n;
+        if (result.success) window.ModuleApp.Toast.show(_L('✅ 图片已保存', '✅ Image saved'), 'success');
+        else window.ModuleApp.Toast.show('❌ ' + (result.error || _L('保存失败', 'Save failed')), 'error');
       }
     } catch (err) {
-      window.ModuleApp.Toast.show('❌ 导出失败: ' + err.message, 'error');
+      const I18n = window.ModuleApp?.I18n;
+      window.ModuleApp.Toast.show('❌ ' + (I18n?.t('gantt.exportFailed', { error: err.message }) || ('导出失败: ' + err.message)), 'error');
     }
   }
 
   async function _exportGanttExcel() {
+    const I18n = window.ModuleApp?.I18n;
     try {
       const scopeIds = window.ModuleApp.State?.state?.projectScopeIds || [];
       const result = await _api.gantt.exportExcel(scopeIds);
       if (!result || result.canceled) return;
-      if (result.success) window.ModuleApp.Toast.show('✅ Excel 已导出到: ' + result.path, 'success');
+      if (result.success) window.ModuleApp.Toast.show(_L('✅ Excel 已导出到: ', '✅ Excel exported to: ') + result.path, 'success');
       else if (result.error) window.ModuleApp.Toast.show('❌ ' + result.error, 'error');
-      else window.ModuleApp.Toast.show('❌ 导出失败', 'error');
+      else window.ModuleApp.Toast.show('❌ ' + _L('导出失败', 'Export failed'), 'error');
     } catch (err) {
-      window.ModuleApp.Toast.show('❌ 导出失败: ' + err.message, 'error');
+      window.ModuleApp.Toast.show('❌ ' + (I18n?.t('gantt.exportFailed', { error: err.message }) || ('导出失败: ' + err.message)), 'error');
     }
   }
 
   async function _exportGanttCsv() {
+    const I18n = window.ModuleApp?.I18n;
     try {
       const scopeIds = window.ModuleApp.State?.state?.projectScopeIds || [];
       if (typeof _api.gantt?.exportCsv === 'function') {
         const result = await _api.gantt.exportCsv(scopeIds);
         if (!result || result.canceled) return;
-        if (result.success) window.ModuleApp.Toast.show('✅ CSV 已导出到: ' + result.path, 'success');
+        if (result.success) window.ModuleApp.Toast.show(_L('✅ CSV 已导出到: ', '✅ CSV exported to: ') + result.path, 'success');
         else if (result.error) window.ModuleApp.Toast.show('❌ ' + result.error, 'error');
-        else window.ModuleApp.Toast.show('❌ 导出失败', 'error');
+        else window.ModuleApp.Toast.show('❌ ' + _L('导出失败', 'Export failed'), 'error');
         return;
       }
       // Electron 兼容兜底：按当前 projectScopeIds 导出 UTF-8 BOM CSV
@@ -822,7 +883,7 @@
       const PS = window.ModuleApp.ProjectScope;
       const vis = PS ? PS.visibleIdSet(state.tasks, scopeIds) : null;
       const rows = (data || []).filter(t => !vis || vis.has(t.id));
-      let csv = '\uFEFF任务ID,任务内容,层级,开始日期,截止日期\n';
+      let csv = _L('\uFEFF任务ID,任务内容,层级,开始日期,截止日期\n', '\uFEFFTask ID,Task,Level,Start Date,End Date\n');
       for (const t of rows) {
         csv += `"${t.id || ''}","${String(t.content || '').replace(/"/g, '""')}",${t.level ?? 0},"${t.start || ''}","${t.end || ''}"\n`;
       }
@@ -832,14 +893,14 @@
       const now = new Date();
       const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
       a.href = url;
-      a.download = `甘特图-${stamp}.csv`;
+      a.download = _L(`甘特图-${stamp}.csv`, `Gantt-${stamp}.csv`);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      window.ModuleApp.Toast.show('✅ CSV 已下载', 'success');
+      window.ModuleApp.Toast.show(_L('✅ CSV 已下载', '✅ CSV downloaded'), 'success');
     } catch (err) {
-      window.ModuleApp.Toast.show('❌ CSV 导出失败: ' + err.message, 'error');
+      window.ModuleApp.Toast.show('❌ ' + (I18n?.t('gantt.exportFailed', { error: err.message }) || ('CSV 导出失败: ' + err.message)), 'error');
     }
   }
 

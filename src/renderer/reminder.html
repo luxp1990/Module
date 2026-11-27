@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>任务提醒</title>
+<title data-i18n="reminder.docTitle">任务提醒</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -101,34 +101,60 @@
 </head>
 <body>
   <div class="hdr">
-    <h1 id="title">任务提醒</h1>
+    <h1 id="title" data-i18n="reminder.title">任务提醒</h1>
     <div class="sub" id="subtitle"></div>
   </div>
   <div class="body" id="body"></div>
   <div class="foot">
-    <button class="btn" id="closeBtn">关闭</button>
+    <button class="btn" id="closeBtn" data-i18n="common.close">关闭</button>
   </div>
 <script src="api-bridge.js"></script>
+<script src="i18n.js"></script>
 <script>
   const _api = window.api;
+  const I18n = window.ModuleApp && window.ModuleApp.I18n;
   let currentOpts = { mode: 'full', useScope: false };
+
+  function tr(key, fallbackZh, fallbackEn, params) {
+    let text;
+    if (I18n && I18n.hasKey(key)) {
+      text = I18n.t(key, params);
+    } else {
+      const isEn = I18n && I18n.getLocale() === 'en-US';
+      text = (isEn && fallbackEn) ? fallbackEn : fallbackZh;
+      if (params && typeof text === 'string') {
+        text = text.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined && params[k] !== null ? String(params[k]) : m));
+      }
+    }
+    return text;
+  }
 
   function escapeHtml(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function titleForMode(mode) {
-    if (mode === 'near') return '近两日到期';
-    if (mode === 'overdue') return '已延期';
-    return '每日提醒';
+    if (mode === 'near') return tr('reminder.modeNear', '近两日到期', 'Due in 2 Days');
+    if (mode === 'overdue') return tr('reminder.modeOverdue', '已延期', 'Overdue');
+    return tr('reminder.title', '每日任务提醒', 'Daily Task Reminder');
+  }
+
+  function localizeSectionTitle(sec) {
+    if (sec.key === 'overdue') return tr('deadline.overdue', sec.title || '已逾期', 'Overdue');
+    if (sec.key === 'today') return tr('deadline.today', sec.title || '今天', 'Today');
+    if (sec.key === 'tomorrow') return tr('deadline.tomorrow', sec.title || '明天', 'Tomorrow');
+    return sec.title || '';
   }
 
   function render(payload) {
     const body = document.getElementById('body');
     document.getElementById('title').textContent = titleForMode(payload.mode);
     const c = payload.counts || {};
+    const countText = c.all != null
+      ? tr('reminder.totalCount', ' · 共 {count} 项', ' · {count} total', { count: c.all })
+      : '';
     document.getElementById('subtitle').textContent = payload.todayStr
-      ? `本地日 ${payload.todayStr}` + (c.all != null ? ` · 共 ${c.all} 项` : '')
+      ? tr('reminder.localDate', '本地日 {date}', 'Local {date}', { date: payload.todayStr }) + countText
       : '';
 
     if (payload.emptyMessage) {
@@ -139,24 +165,25 @@
     let html = '';
     for (const sec of payload.sections || []) {
       const cls = sec.key === 'overdue' ? 'overdue' : sec.key === 'today' ? 'today' : sec.key === 'tomorrow' ? 'tomorrow' : '';
-      html += `<div class="section"><div class="section-title ${cls}">${escapeHtml(sec.title)}（${sec.rows.length}${sec.more ? '+' : ''}）</div>`;
+      const secTitle = localizeSectionTitle(sec);
+      html += `<div class="section"><div class="section-title ${cls}">${escapeHtml(secTitle)} (${sec.rows.length}${sec.more ? '+' : ''})</div>`;
       for (const row of sec.rows) {
         html += `<button type="button" class="row ${sec.key === 'overdue' ? 'overdue' : ''}" data-id="${escapeHtml(row.id)}">` +
           `<span class="chain" title="${escapeHtml(row.chain)}">${escapeHtml(row.chain)}</span>` +
           `<span class="meta">${escapeHtml(row.deadline)}</span></button>`;
       }
-      if (sec.more > 0) html += `<div class="more">还有 ${sec.more} 项未列出</div>`;
+      if (sec.more > 0) html += `<div class="more">${escapeHtml(tr('reminder.moreItems', '还有 {count} 项未列出', '{count} more not shown', { count: sec.more }))}</div>`;
       html += '</div>';
     }
-    body.innerHTML = html || `<div class="empty">没有需要关注的任务</div>`;
+    body.innerHTML = html || `<div class="empty">${escapeHtml(tr('reminder.empty', '太棒了，今天没有逾期或到期的待办任务！', 'All caught up! No overdue or due-today tasks.'))}</div>`;
   }
 
   async function load() {
     try {
       const payload = await _api.reminder.getPayload(currentOpts);
-      render(payload || { emptyMessage: '加载失败', sections: [], counts: {} });
+      render(payload || { emptyMessage: tr('reminder.loadFailed', '加载失败', 'Failed to load'), sections: [], counts: {} });
     } catch (e) {
-      render({ emptyMessage: '加载失败：' + (e.message || e), sections: [], counts: {} });
+      render({ emptyMessage: tr('toast.loadFailed', '加载失败：{error}', 'Failed to load: {error}', { error: e.message || e }), sections: [], counts: {} });
     }
   }
 
@@ -202,9 +229,33 @@
     const useScope = q.get('scope') === '1';
     currentOpts = { mode, useScope };
   } catch (_) {}
+
+  if (_api && _api.config && _api.config.get) {
+    _api.config.get().then(cfg => {
+      if (I18n) {
+        const prevLocale = I18n.getLocale();
+        const nextLocale = I18n.setLocale((cfg && cfg.language) || 'auto');
+        if (nextLocale !== prevLocale) load();
+      }
+    }).catch(() => {});
+  }
   load();
 
-  _api.onDataChange?.(() => { load(); });
+  _api.onDataChange?.((data) => {
+    const patch = data && data.patch;
+    if (patch && patch.action === 'CONFIG_UPDATED' && patch.payload && patch.payload.language !== undefined && I18n) {
+      I18n.setLocale(patch.payload.language);
+    } else if (!patch && _api && _api.config && _api.config.get) {
+      _api.config.get().then(cfg => {
+        if (I18n && cfg && cfg.language !== undefined) {
+          I18n.setLocale(cfg.language);
+        }
+        load();
+      }).catch(() => load());
+      return;
+    }
+    load();
+  });
 </script>
 </body>
 </html>

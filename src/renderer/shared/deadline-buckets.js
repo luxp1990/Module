@@ -88,12 +88,17 @@
 
   /**
    * @param {object[]} tasks 已按需过滤（全局或 scope）的全量任务（含完成项亦可，分桶会跳过）
-   * @param {{ mode?: 'full'|'near'|'overdue', overdueCap?: number, emptyCheer?: boolean }} opts
+   * @param {{ mode?: 'full'|'near'|'overdue', overdueCap?: number, emptyCheer?: boolean, locale?: string }} opts
    */
   function buildPayload(tasks, opts) {
     const mode = (opts && opts.mode) || 'full';
     const overdueCap = (opts && opts.overdueCap != null) ? opts.overdueCap : OVERDUE_LIST_CAP;
     const emptyCheer = !!(opts && opts.emptyCheer);
+    const i18n = (typeof window !== 'undefined' && window.ModuleApp && window.ModuleApp.I18n) ? window.ModuleApp.I18n : null;
+    const locale = (opts && opts.locale) || (i18n ? i18n.getLocale() : 'zh-CN');
+    const isEn = locale === 'en-US';
+    const tr = (key, zh, en) => (i18n && i18n.hasKey(key, locale)) ? i18n.t(key) : (isEn ? en : zh);
+
     const all = tasks || [];
     const taskMap = new Map(all.map((t) => [t.id, t]));
     const b = bucketTasks(all);
@@ -103,13 +108,13 @@
 
     let sections = [];
     if (mode === 'full' || mode === 'near') {
-      sections.push({ key: 'today', title: '今天到期', rows: toRows(b.today, taskMap) });
-      sections.push({ key: 'tomorrow', title: '明天到期', rows: toRows(b.tomorrow, taskMap) });
+      sections.push({ key: 'today', title: tr('deadline.dueToday', '今天到期', 'Due today'), rows: toRows(b.today, taskMap) });
+      sections.push({ key: 'tomorrow', title: tr('deadline.dueTomorrow', '明天到期', 'Due tomorrow'), rows: toRows(b.tomorrow, taskMap) });
     }
     if (mode === 'full' || mode === 'overdue') {
       sections.push({
         key: 'overdue',
-        title: '已逾期',
+        title: tr('deadline.overdue', '已逾期', 'Overdue'),
         rows: toRows(overdueShown, taskMap),
         more: overdueMore,
       });
@@ -132,13 +137,13 @@
     let emptyMessage = null;
     if (totalVisible === 0 && overdueMore === 0) {
       if (mode === 'full' && emptyCheer) {
-        emptyMessage = '所有任务都已完成，快下班吧！';
+        emptyMessage = isEn ? 'All tasks are completed, time to wrap up!' : '所有任务都已完成，快下班吧！';
       } else if (mode === 'near') {
-        emptyMessage = '近两日没有到期任务';
+        emptyMessage = isEn ? 'No tasks due in the next two days' : '近两日没有到期任务';
       } else if (mode === 'overdue') {
-        emptyMessage = '没有延期任务';
+        emptyMessage = isEn ? 'No overdue tasks' : '没有延期任务';
       } else {
-        emptyMessage = '没有需要关注的任务';
+        emptyMessage = isEn ? 'No tasks need attention' : '没有需要关注的任务';
       }
     }
 

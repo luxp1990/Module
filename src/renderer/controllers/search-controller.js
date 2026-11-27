@@ -1,6 +1,24 @@
 // Module — 控制器：搜索中枢 (Controller)
 (function() {
 
+  function tr(key, fallback, params) {
+    const I18n = window.ModuleApp && window.ModuleApp.I18n;
+    if (I18n && typeof I18n.t === 'function') {
+      if (typeof I18n.hasKey !== 'function' || I18n.hasKey(key)) {
+        return I18n.t(key, params);
+      }
+    }
+    let text = fallback || key;
+    if (params && typeof text === 'string') {
+      text = text.replace(/\{(\w+)\}/g, (m, k) =>
+        Object.prototype.hasOwnProperty.call(params, k) && params[k] !== undefined && params[k] !== null
+          ? String(params[k])
+          : m
+      );
+    }
+    return text;
+  }
+
   const SearchController = {
 
     _state: null,
@@ -133,7 +151,7 @@
 
       result.hidden = false;
       if (matches.length === 0) {
-        result.innerHTML = '<span class="search-summary">无匹配</span>';
+        result.innerHTML = `<span class="search-summary">${tr('hierarchy.emptyFiltered', '无匹配')}</span>`;
         return;
       }
 
@@ -142,12 +160,12 @@
       const items = top.map(t => {
         const path = this.taskPathText(t.id);
         const lvl  = Tc.getTaskLevel(t);
-        const tag  = lvl === 0 ? '主' : lvl === 1 ? '一' : lvl === 2 ? '二' : lvl === 3 ? '三' : '四';
+        const tag  = `L${lvl}`;
         const completedBadge = t.completed
-          ? '<span class="search-item-lvl" style="background:var(--fg-soft);margin-left:4px;">已完成</span>'
+          ? `<span class="search-item-lvl" style="background:var(--fg-soft);margin-left:4px;">${tr('status.completed', '已完成')}</span>`
           : '';
         return `<div class="search-item" data-search-jump="${t.id}"
-          title="点击跳转 · Enter/F3 下一项"
+          title="Enter / F3"
           style="${t.completed ? 'opacity:0.6;' : ''}">
           <span class="search-item-lvl l${lvl}">${tag}</span>
           <span class="search-item-path">${highlightMatch(path, qLower)}</span>
@@ -156,16 +174,16 @@
       }).join('');
 
       const more = matches.length > 20
-        ? `<div class="search-item-more">还有 ${matches.length - 20} 个未显示</div>`
+        ? `<div class="search-item-more">+${matches.length - 20} ${tr('common.more', '更多')}</div>`
         : '';
 
-      result.innerHTML = `<div class="search-summary">${matches.length} 个匹配 — Enter/F3 下一项</div>${items}${more}`;
+      result.innerHTML = `<div class="search-summary">${matches.length} · Enter/F3</div>${items}${more}`;
     },
 
     jumpNextMatch(backward = false) {
       this._collectMatchIds();
       if (this._matchIds.length === 0) {
-        window.ModuleApp.Toast?.show('无匹配任务', 'info');
+        window.ModuleApp.Toast?.show(tr('hierarchy.emptyFiltered', '无匹配任务'), 'info');
         return;
       }
       if (backward) {
@@ -175,7 +193,7 @@
       }
       const id = this._matchIds[this._matchIndex];
       this.jumpToSearchHit(id, { keepSearch: true, toast: false });
-      window.ModuleApp.Toast?.show(`匹配 ${this._matchIndex + 1}/${this._matchIds.length}`, 'info');
+      window.ModuleApp.Toast?.show(`${this._matchIndex + 1}/${this._matchIds.length}`, 'info');
     },
 
     jumpToSearchHit(taskId, opts = {}) {
@@ -216,7 +234,7 @@
         }
       });
       if (opts.toast !== false && !keepSearch) {
-        window.ModuleApp.Toast.show('已跳转到任务', 'success');
+        window.ModuleApp.Toast.show(tr('reminder.focusTask', '已跳转到任务'), 'success');
       }
     }
   };

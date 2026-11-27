@@ -92,9 +92,10 @@
           const isStart = target === 'modalStart';
           const inputId = isStart ? 'taskStartDate' : 'taskDeadline';
           const currentValue = document.getElementById(inputId).value;
+          const I18n = window.ModuleApp?.I18n;
           window.ModuleApp.DatePicker.show({
             target,
-            title: isStart ? '选择开始日期' : '选择截止日期',
+            title: isStart ? (I18n?.t('modal.startDate') || '选择开始日期') : (I18n?.t('modal.deadline') || '选择截止日期'),
             value: currentValue
           }, (_tgt, val) => {
             document.getElementById(inputId).value = val || '';
@@ -127,8 +128,12 @@
 
     closeTaskModal: _closeTaskModal,
 
-    confirm({ title = '请确认', message = '确定要继续吗?' } = {}) {
+    confirm({ title, message } = {}) {
       if (_isConfirmDialogOpen) return Promise.resolve(false);
+      const I18n = window.ModuleApp?.I18n;
+      const isEn = I18n?.getLocale?.() === 'en-US';
+      title = title ?? (I18n?.t('modal.confirmTitle') || '请确认');
+      message = message ?? (isEn ? 'Are you sure you want to continue?' : '确定要继续吗?');
       if (typeof window !== 'undefined' && typeof window.__confirmDialogMock === 'function') {
         return window.__confirmDialogMock({ title, message });
       }
@@ -145,7 +150,7 @@
           const btn = document.createElement('button');
           btn.className = 'btn btn-primary';
           btn.id = 'confirmOk';
-          btn.textContent = '确定';
+          btn.textContent = I18n?.t('common.confirm') || '确定';
           footer.appendChild(btn);
         }
         const ok = document.getElementById('confirmOk');
@@ -176,9 +181,12 @@
       });
     },
 
-    choose({ title = '请选择', message = '', choices = [] } = {}) {
+    choose({ title, message = '', choices = [] } = {}) {
       if (_isConfirmDialogOpen) return Promise.resolve(null);
       if (!choices.length) return Promise.resolve(null);
+      const I18n = window.ModuleApp?.I18n;
+      const isEn = I18n?.getLocale?.() === 'en-US';
+      title = title ?? (isEn ? 'Please choose' : '请选择');
       _isConfirmDialogOpen = true;
       return new Promise((resolve) => {
         const modal = document.getElementById('confirmModal');
@@ -233,9 +241,12 @@
     showTaskModal(mode, taskData, parentHintText) {
       const modal = document.getElementById('taskModal');
       if (!modal) return;
+      const I18n = window.ModuleApp?.I18n;
 
       document.getElementById('modalTitle').textContent =
-        mode === 'create' ? (taskData.parentId ? '新建子任务' : '新建主任务') : '编辑任务';
+        mode === 'create'
+          ? (taskData.parentId ? (I18n?.t('hierarchy.addSubtask') || '新建子任务') : (I18n?.t('modal.createTask') || '新建主任务'))
+          : (I18n?.t('modal.editTask') || '编辑任务');
       document.getElementById('taskContent').value = taskData.content || '';
       document.getElementById('taskPriority').value = taskData.priority || '';
       document.getElementById('taskStatus').value = taskData.status || '';
@@ -274,21 +285,26 @@
     },
 
     showNotesModal(task) {
+      const I18n = window.ModuleApp?.I18n;
+      const isEn = I18n?.getLocale?.() === 'en-US';
       document.getElementById('notesTitle').textContent = task.content;
-      document.getElementById('notesContent').textContent = task.notes || '（无备注）';
-      let deadlineStr = '无';
+      document.getElementById('notesContent').textContent = task.notes || (I18n?.t('common.none') || '（无备注）');
+      let deadlineStr = I18n?.t('common.none') || '无';
       if (task.deadline) {
         const days = window.ModuleApp.TaskItem.helpers.daysFromNow(task.deadline);
-        deadlineStr = `${task.deadline} ${days !== null ? '(' + days + '天)' : ''}`;
+        const dayUnit = isEn ? 'd' : '天';
+        deadlineStr = `${task.deadline} ${days !== null ? '(' + days + dayUnit + ')' : ''}`;
       }
-      document.getElementById('notesDeadline').textContent = `截止：${deadlineStr}`;
+      const dlLabel = I18n?.t('modal.deadline') || '截止';
+      document.getElementById('notesDeadline').textContent = `${dlLabel}：${deadlineStr}`;
       document.getElementById('notesModal').hidden = false;
     },
 
     showDataModal(dbPath) {
       document.getElementById('dataModal').hidden = false;
       if (dbPath) {
-        document.getElementById('exportHint').textContent = '当前数据: ' + dbPath;
+        const isEn = window.ModuleApp?.I18n?.getLocale?.() === 'en-US';
+        document.getElementById('exportHint').textContent = (isEn ? 'Current data: ' : '当前数据: ') + dbPath;
       }
       window.ModuleApp.refreshBackupsList?.();
     }

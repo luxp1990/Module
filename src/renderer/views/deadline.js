@@ -39,11 +39,16 @@
           : 0);
 
       if (tasks.length === 0) {
+        const I18n = window.ModuleApp?.I18n;
+        const emptyTitle = (state.projectScopeIds || []).length
+          ? (I18n?.t('hierarchy.emptyFiltered') || '该项目下没有带截止日期的任务')
+          : (I18n?.t('deadline.empty') || '没有待办任务');
+        const emptyHint = I18n?.t('hierarchy.empty') || '点右上角「+ 添加」或在底部输入任务开始';
         this._container.innerHTML = `
           <div class="empty-state">
             <div class="empty-state-icon">📅</div>
-            <div class="empty-state-title">${(state.projectScopeIds || []).length ? '该项目下没有带截止日期的任务' : '没有待办任务'}</div>
-            <div class="empty-state-hint">点右上角「+ 添加」或在底部输入任务开始</div>
+            <div class="empty-state-title">${emptyTitle}</div>
+            <div class="empty-state-hint">${emptyHint}</div>
           </div>`;
         return;
       }
@@ -51,6 +56,24 @@
       const { taskMap } = Sort
         ? Sort.buildChildrenMap(scopedTasks, { activeOnly: false })
         : { taskMap: new Map(scopedTasks.map(t => [t.id, t])) };
+
+      const I18n = window.ModuleApp?.I18n;
+      const isEn = I18n?.getLocale?.() === 'en-US';
+      const pLabels = {
+        p0: I18n?.t('priority.p0Short') || 'P0',
+        p1: I18n?.t('priority.p1Short') || 'P1',
+        p2: I18n?.t('priority.p2Short') || 'P2',
+      };
+      const sLabels = {
+        todo: I18n?.t('status.todo') || '待办',
+        progress: I18n?.t('status.progress') || '进行中',
+        blocked: I18n?.t('status.blocked') || '阻塞',
+        review: I18n?.t('status.review') || '审核中',
+      };
+      const notesTitle = isEn ? 'View notes' : '查看备注';
+      const editTitle = I18n?.t('common.edit') || '编辑';
+      const doneTitle = I18n?.t('common.done') || '完成';
+      const delTitle = I18n?.t('common.delete') || '删除';
 
       const html = `<div class="task-tree">${tasks.map(t => {
         const dClass = deadlineClass(t.deadline);
@@ -70,20 +93,20 @@
 
         let deadlineBadge;
         if (!t.deadline) {
-          deadlineBadge = `<span class="deadline" style="color:var(--fg-soft);">无截止日期</span>`;
+          deadlineBadge = `<span class="deadline" style="color:var(--fg-soft);">${I18n?.t('deadline.noDeadline') || '无截止日期'}</span>`;
         } else {
           const days = daysFromNow(t.deadline);
           const lbl = (dClass === 'danger' || dClass === 'warning')
             ? dLabel
-            : `还有 ${days} 天`;
+            : (I18n?.t('deadline.daysLeft', { days }) || `还有 ${days} 天`);
           deadlineBadge = `<span class="deadline ${dClass}">${lbl} · ${fmtDateShort(t.deadline)}</span>`;
         }
 
         const priorityBadge = t.priority
-          ? `<span class="task-priority-badge ${t.priority}">🔴 ${{p0:'P0',p1:'P1',p2:'P2'}[t.priority] || t.priority}</span>`
+          ? `<span class="task-priority-badge ${t.priority}">🔴 ${pLabels[t.priority] || t.priority}</span>`
           : '';
         const statusBadge = t.status
-          ? `<span class="task-status-badge ${t.status}">${{todo:'待办',progress:'进行中',blocked:'阻塞',review:'审核中'}[t.status] || t.status}</span>`
+          ? `<span class="task-status-badge ${t.status}">${sLabels[t.status] || t.status}</span>`
           : '';
 
         return `
@@ -98,12 +121,12 @@
                 ${priorityBadge}
                 ${statusBadge}
                 ${deadlineBadge}
-                ${hasNotes ? `<span class="notes-indicator" data-notes="${t.id}" title="查看备注">📝</span>` : ''}
+                ${hasNotes ? `<span class="notes-indicator" data-notes="${t.id}" title="${notesTitle}">📝</span>` : ''}
               </div>
               <div class="task-actions">
-                <button class="task-action-btn" data-edit="${t.id}" title="编辑">✎</button>
-                <button class="task-action-btn complete" data-complete="${t.id}" title="完成">✓</button>
-                <button class="task-action-btn delete" data-delete="${t.id}" title="删除">🗑</button>
+                <button class="task-action-btn" data-edit="${t.id}" title="${editTitle}">✎</button>
+                <button class="task-action-btn complete" data-complete="${t.id}" title="${doneTitle}">✓</button>
+                <button class="task-action-btn delete" data-delete="${t.id}" title="${delTitle}">🗑</button>
               </div>
             </div>
           </div>`;

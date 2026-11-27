@@ -89,7 +89,7 @@
 
         const countEl = this._barEl.querySelector('.batch-count');
 
-        if (countEl) countEl.textContent = `已选 ${n} 项`;
+        if (countEl) countEl.textContent = window.ModuleApp.I18n?.t('batch.selectedCount', { count: n }) || `已选 ${n} 项`;
 
       }
 

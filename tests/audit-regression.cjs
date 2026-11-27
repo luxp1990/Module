@@ -179,7 +179,7 @@ test('legacy report timestamps use local days, while calendar-only dates remain 
     ['America/Los_Angeles', '2026-11-09', '2026年11月09日'],
   ]) {
     const result = spawnSync(process.execPath, [], {
-      input: `const format = (${format}); process.stdout.write(format(${JSON.stringify(iso)}));`,
+      input: `const _locale = () => 'zh-CN'; const format = (${format}); process.stdout.write(format(${JSON.stringify(iso)}));`,
       encoding: 'utf8', env: {...process.env, TZ: tz},
     });
     assert.equal(result.status, 0, result.stderr);
@@ -243,6 +243,7 @@ test('startup read failures show a recovery message instead of silently presenti
   const sandbox = {
     init: async () => { throw Error('damaged tasks-data.json'); },
     showDataError: () => {},
+    tr: (_k, fb, p) => (fb || _k).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] !== undefined ? String(p[k]) : m)),
     document: { getElementById: () => ({replaceChildren: node => { message = node; }}),
       createElement: () => ({setAttribute: () => {}}) },
   };
@@ -255,8 +256,9 @@ test('startup read failures show a recovery message instead of silently presenti
 function loadCore(sandbox) {
   const source=fs.readFileSync(path.join(ROOT,'src/renderer/app.js'),'utf8');
   const start=source.indexOf('const CoreServices = {'),end=source.indexOf('\n};',start)+3;
-  vm.runInNewContext(source.slice(start,end)+'\nglobalThis.core=CoreServices;',sandbox);
-  return sandbox.core;
+  const env={tr:(_k,fb,p)=>(fb||_k).replace(/\{(\w+)\}/g,(m,k)=>(p&&p[k]!==undefined?String(p[k]):m)),...sandbox};
+  vm.runInNewContext(source.slice(start,end)+'\nglobalThis.core=CoreServices;',env);
+  return env.core;
 }
 
 test('undo rejects are reported, duplicate requests are ignored and controls recover', async () => {

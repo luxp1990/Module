@@ -92,6 +92,8 @@ pub struct AppConfig {
     pub auto_plan: bool,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_language")]
+    pub language: String,
     #[serde(default)]
     pub project_scope_ids: Vec<String>,
     #[serde(default)]
@@ -117,6 +119,7 @@ impl Default for AppConfig {
             report_retention_weeks: 22,
             auto_plan: false,
             theme: "light".to_string(),
+            language: default_language(),
             project_scope_ids: vec![],
             widget_project_scope_ids: vec![],
             last_view: "hierarchy".to_string(),
@@ -132,6 +135,7 @@ impl Default for AppConfig {
 fn default_task_retention() -> i64 { 180 }
 fn default_report_retention() -> i64 { 22 }
 fn default_theme() -> String { "light".to_string() }
+fn default_language() -> String { "auto".to_string() }
 fn default_view() -> String { "hierarchy".to_string() }
 fn default_reminder_hour() -> u32 { 17 }
 fn default_reminder_minute() -> u32 { 0 }

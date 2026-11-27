@@ -247,10 +247,14 @@ pub fn config_get(state: State<AppState>) -> Result<AppConfig, String> {
 
 #[tauri::command]
 pub fn config_update(app: AppHandle, window: tauri::Window, state: State<AppState>, updates: Value) -> Result<AppConfig, String> {
+    let lang_updated = updates.get("language").is_some();
     let res = {
         let mut store = state.lock().unwrap();
         store.update_config(updates)?
     };
+    if lang_updated {
+        crate::update_tray_language(&app, &res.language);
+    }
     broadcast_from(&app, &window, json!({ "action": "CONFIG_UPDATED", "payload": res }));
     Ok(res)
 }
@@ -386,10 +390,13 @@ pub fn backups_restore(
     state: State<AppState>,
     id: String,
 ) -> Result<RestoreBackupResult, String> {
-    let res = {
+    let (res, lang) = {
         let mut store = state.lock().unwrap();
-        store.restore_backup(&id)?
+        let res = store.restore_backup(&id)?;
+        let lang = store.get_config().language;
+        (res, lang)
     };
+    crate::update_tray_language(&app, &lang);
     broadcast_from(&app, &window, json!({ "action": "DATA_IMPORTED" }));
     Ok(res)
 }
@@ -508,7 +515,9 @@ pub fn data_import(app: AppHandle, window: tauri::Window, state: State<AppState>
     let mut store = state.lock().unwrap();
     let m = mode.unwrap_or_else(|| "merge".to_string());
     let res = store.import_snapshot(snapshot, &m)?;
+    let lang = store.get_config().language;
     drop(store);
+    crate::update_tray_language(&app, &lang);
     broadcast_from(&app, &window, json!({ "action": "DATA_IMPORTED" }));
     Ok(res)
 }
@@ -875,6 +884,192 @@ pub fn reminder_focus_task(app: AppHandle, id: String) -> Value {
 #[tauri::command]
 pub fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+pub fn app_update_tray_language(app: AppHandle, lang: String) -> Result<(), String> {
+    crate::update_tray_language(&app, &lang);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn app_open_settings(app: AppHandle) {
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+// ==================== AI ====================
+#[tauri::command]
+pub fn ai_get_config() -> Result<crate::ai::AiConfigPublic, String> {
+    let path = crate::ai::resolve_secrets_path();
+    let config = crate::ai::load_ai_config(&path)?;
+    Ok(config.to_public())
+}
+
+#[tauri::command]
+pub fn ai_save_config(input: crate::ai::AiConfigInput) -> Result<crate::ai::AiConfigPublic, String> {
+    let path = crate::ai::resolve_secrets_path();
+    let mut config = crate::ai::load_ai_config(&path)?;
+    config.apply_input(input);
+    crate::ai::save_ai_config(&path, &config)?;
+    Ok(config.to_public())
+}
+
+#[tauri::command]
+pub async fn ai_test_connection(input: Option<crate::ai::AiConfigInput>) -> Result<String, String> {
+    let path = crate::ai::resolve_secrets_path();
+    let mut config = crate::ai::load_ai_config(&path)?;
+    if let Some(inp) = input {
+        config.apply_input(inp);
+    }
+    crate::ai::test_connection(&config).await
+}
+
+#[tauri::command]
+pub async fn ai_list_models(input: Option<crate::ai::AiConfigInput>) -> Result<Vec<String>, String> {
+    let path = crate::ai::resolve_secrets_path();
+    let mut config = crate::ai::load_ai_config(&path)?;
+    if let Some(inp) = input {
+        config.apply_input(inp);
+    }
+    crate::ai::list_models(&config).await
+}
+
+#[tauri::command]
+pub async fn ai_generate_weekly_report(
+    state: State<'_, AppState>,
+    week_id: Option<String>,
+    report_text: Option<String>,
+    language: Option<String>,
+) -> Result<String, String> {
+    let (config_lang, resolved_text) = {
+        let mut store = state.lock().unwrap();
+        store.refresh_from_disk()?;
+        let cfg_lang = store.get_config().language;
+        let text = if let Some(t) = report_text.filter(|s| !s.trim().is_empty()) {
+            t
+        } else if let Some(wid) = week_id.filter(|s| !s.trim().is_empty()) {
+            let rep = store
+                .get_report(&wid)
+                .ok_or_else(|| format!("Weekly report '{}' not found", wid))?;
+            let mut lines = vec![
+                format!("Week: {} ({} ~ {})", rep.week_id, rep.start_date, rep.end_date),
+                format!("Completed tasks: {}", rep.count),
+            ];
+            for e in &rep.entries {
+                let parent = e
+                    .parent_content
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .map(|p| format!("[{}] ", p))
+                    .unwrap_or_default();
+                lines.push(format!("- {}{} ({})", parent, e.content, e.completed_at));
+            }
+            if let Some(notes) = rep.notes.as_deref().filter(|s| !s.trim().is_empty()) {
+                lines.push(format!("Notes:\n{}", notes.trim()));
+            }
+            lines.join("\n")
+        } else {
+            return Err("weekId or reportText is required".to_string());
+        };
+        (cfg_lang, text)
+    };
+    let lang = crate::resolve_tray_language(
+        language
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&config_lang),
+    );
+    let ai_config = crate::ai::load_ai_config(&crate::ai::resolve_secrets_path())?;
+    crate::ai::generate_weekly_report(&ai_config, &resolved_text, lang).await
+}
+
+#[tauri::command]
+pub async fn ai_breakdown_task(
+    state: State<'_, AppState>,
+    task_id: Option<String>,
+    task_content: Option<String>,
+    task_notes: Option<String>,
+    instruction: Option<String>,
+    max_subtasks_depth: Option<usize>,
+    max_tasks: Option<usize>,
+    language: Option<String>,
+) -> Result<Vec<crate::ai::GeneratedTaskItem>, String> {
+    let (config_lang, resolved_content, resolved_notes) = {
+        let mut store = state.lock().unwrap();
+        store.refresh_from_disk()?;
+        let cfg_lang = store.get_config().language;
+        let found_task = task_id.as_deref().and_then(|id| {
+            store.get_all_tasks().into_iter().find(|t| t.id == id)
+        });
+        let content = task_content
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| found_task.as_ref().map(|t| t.content.clone()))
+            .ok_or_else(|| "Task content is required".to_string())?;
+        let notes = task_notes.or_else(|| found_task.and_then(|t| t.notes));
+        (cfg_lang, content, notes)
+    };
+    let lang = crate::resolve_tray_language(
+        language
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&config_lang),
+    );
+    let ai_config = crate::ai::load_ai_config(&crate::ai::resolve_secrets_path())?;
+    crate::ai::breakdown_task(
+        &ai_config,
+        &resolved_content,
+        resolved_notes.as_deref(),
+        instruction.as_deref(),
+        max_subtasks_depth.unwrap_or(2),
+        max_tasks.unwrap_or(5),
+        lang,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn ai_notes_to_tasks(
+    state: State<'_, AppState>,
+    note_id: Option<String>,
+    note_content: Option<String>,
+    language: Option<String>,
+) -> Result<Vec<crate::ai::GeneratedTaskItem>, String> {
+    let (config_lang, resolved_content) = {
+        let mut store = state.lock().unwrap();
+        store.refresh_from_disk()?;
+        let cfg_lang = store.get_config().language;
+        let content = if let Some(c) = note_content.filter(|s| !s.trim().is_empty()) {
+            c
+        } else if let Some(nid) = note_id.filter(|s| !s.trim().is_empty()) {
+            let note = store
+                .get_notes()
+                .into_iter()
+                .find(|n| n.id == nid)
+                .ok_or_else(|| format!("Note '{}' not found", nid))?;
+            if note.content.trim().is_empty() {
+                return Err("Note content is empty".to_string());
+            }
+            note.content
+        } else {
+            return Err("noteId or noteContent is required".to_string());
+        };
+        (cfg_lang, content)
+    };
+    let lang = crate::resolve_tray_language(
+        language
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&config_lang),
+    );
+    let ai_config = crate::ai::load_ai_config(&crate::ai::resolve_secrets_path())?;
+    crate::ai::notes_to_tasks(&ai_config, &resolved_content, lang).await
 }
 
 #[cfg(test)]

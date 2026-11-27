@@ -110,6 +110,17 @@
     },
     app: {
       version: () => invoke('app_version'),
+      updateTrayLanguage: (lang) => invoke('app_update_tray_language', { lang }),
+      openSettings: () => invoke('app_open_settings'),
+    },
+    ai: {
+      getConfig: () => invoke('ai_get_config'),
+      saveConfig: (config) => invoke('ai_save_config', { input: config }),
+      listModels: (config) => invoke('ai_list_models', { input: config || null }),
+      testConnection: (config) => invoke('ai_test_connection', { input: config || null }),
+      generateWeeklyReport: (weekId, language) => invoke('ai_generate_weekly_report', { weekId, language }),
+      breakdownTask: (taskId, instruction, maxTasks, language) => invoke('ai_breakdown_task', { taskId, instruction, maxTasks, language }),
+      notesToTasks: (noteId, language) => invoke('ai_notes_to_tasks', { noteId, language }),
     },
     onDataChange: (callback) => {
       listen('data-changed', (e) => callback(e.payload));

@@ -1,6 +1,18 @@
 // Module — 组件：右键菜单（v1.5.0 填实）
 
 (function() {
+  function _t(key, params, zhFallback, enFallback) {
+    const i18n = window.ModuleApp?.I18n;
+    if (i18n && typeof i18n.t === 'function' && (!i18n.hasKey || i18n.hasKey(key))) {
+      return i18n.t(key, params);
+    }
+    const loc = i18n?.getLocale?.() || 'zh-CN';
+    let text = (loc === 'en-US' && enFallback) ? enFallback : (zhFallback || key);
+    if (params && typeof text === 'string') {
+      text = text.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined && params[k] !== null ? String(params[k]) : m));
+    }
+    return text;
+  }
 
   const ContextMenu = {
 
@@ -8,11 +20,63 @@
 
     _state: null,
 
+    _actionCallback: null,
 
+    _ensureAiBreakdownItem() {
+      if (!this._menuEl) return null;
+      let aiItem = this._menuEl.querySelector('[data-action="aiBreakdown"]');
+      if (!aiItem) {
+        aiItem = document.createElement('div');
+        aiItem.className = 'context-menu-item context-menu-ai';
+        aiItem.dataset.action = 'aiBreakdown';
+        const addChild = this._menuEl.querySelector('[data-action="addChild"]');
+        if (addChild && addChild.parentNode === this._menuEl) {
+          addChild.insertAdjacentElement('afterend', aiItem);
+        } else {
+          this._menuEl.appendChild(aiItem);
+        }
+      }
+      return aiItem;
+    },
+
+    _translateMenu() {
+      if (!this._menuEl) return;
+      const setLabel = (selector, text) => {
+        const el = this._menuEl.querySelector(selector);
+        if (el) el.textContent = text;
+      };
+      setLabel('[data-action="edit"]', `✎ ${_t('contextMenu.edit', null, '编辑', 'Edit Task')}`);
+      setLabel('[data-action="complete"]', `✓ ${_t('contextMenu.complete', null, '完成', 'Mark Complete')}`);
+      setLabel('[data-action="addChild"]', `＋ ${_t('contextMenu.addSubtask', null, '添加子任务', 'Add Subtask')}`);
+      setLabel('[data-action="aiBreakdown"]', `✨ ${_t('contextMenu.aiBreakdown', null, 'AI 拆解子任务', 'AI Break Down')}`);
+      setLabel('[data-action="delete"]', `🗑 ${_t('contextMenu.delete', null, '删除', 'Delete Task')}`);
+
+      setLabel('[data-action="setPriority"][data-value="p0"]', `🔴 ${_t('priority.p0Short', null, 'P0', 'P0')}`);
+      setLabel('[data-action="setPriority"][data-value="p1"]', `🟠 ${_t('priority.p1Short', null, 'P1', 'P1')}`);
+      setLabel('[data-action="setPriority"][data-value="p2"]', `🟡 ${_t('priority.p2Short', null, 'P2', 'P2')}`);
+      setLabel('[data-action="setPriority"][data-value=""]', `✕ ${_t('common.clear', null, '清除', 'Clear')}`);
+
+      setLabel('[data-action="setStatus"][data-value="todo"]', `📋 ${_t('status.todo', null, '待办', 'To Do')}`);
+      setLabel('[data-action="setStatus"][data-value="progress"]', `🔄 ${_t('status.progress', null, '进行中', 'In Progress')}`);
+      setLabel('[data-action="setStatus"][data-value="blocked"]', `🚫 ${_t('status.blocked', null, '阻塞', 'Blocked')}`);
+      setLabel('[data-action="setStatus"][data-value="review"]', `👁 ${_t('status.review', null, '审核中', 'In Review')}`);
+
+      this._menuEl.querySelectorAll('.context-menu-item.has-submenu').forEach(subParent => {
+        const firstText = [...subParent.childNodes].find(n => n.nodeType === 3);
+        if (!firstText) return;
+        if (subParent.querySelector('[data-action="setPriority"]')) {
+          firstText.nodeValue = _t('contextMenu.setPriority', null, '设置优先级', 'Set Priority');
+        } else if (subParent.querySelector('[data-action="setStatus"]')) {
+          firstText.nodeValue = _t('contextMenu.setStatus', null, '设置状态', 'Set Status');
+        }
+      });
+    },
 
     init(stateRef, actionCallback) {
 
       this._state = stateRef;
+
+      this._actionCallback = actionCallback;
 
       this._menuEl = document.getElementById('contextMenu');
 
@@ -48,6 +112,10 @@
 
       if (this._menuEl) {
 
+        this._ensureAiBreakdownItem();
+
+        this._translateMenu();
+
         this._menuEl.querySelectorAll('.context-menu-item').forEach(item => {
 
           item.addEventListener('click', (e) => {
@@ -56,9 +124,15 @@
 
             const action = item.dataset.action;
 
-            if (action && actionCallback) {
+            const taskId = this._state.state.contextMenu.taskId;
 
-              actionCallback(action, item.dataset.value, this._state.state.contextMenu.taskId);
+            if (action === 'aiBreakdown') {
+
+              if (taskId) window.ModuleApp.HierarchyView?.openAiBreakdown?.(taskId);
+
+            } else if (action && actionCallback) {
+
+              actionCallback(action, item.dataset.value, taskId);
 
             }
 
@@ -79,7 +153,7 @@
 
       if (!this._menuEl) return;
 
-
+      this._translateMenu();
 
       // 更新状态机中的目标 ID
 
@@ -91,7 +165,7 @@
 
       const left = Math.min(x, window.innerWidth - 180);
 
-      const top = Math.min(y, window.innerHeight - 290);
+      const top = Math.min(y, window.innerHeight - 320);
 
       this._menuEl.style.left = Math.max(4, left) + 'px';
 

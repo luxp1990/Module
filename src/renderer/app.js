@@ -8,6 +8,24 @@ const _api = window.api;
 // 状态引用绑定：让 legacy 代码中对 state 的读写安全映射到响应式状态单例
 const state = window.ModuleApp.State.state;
 
+function tr(key, fallback, params) {
+  const I18n = window.ModuleApp && window.ModuleApp.I18n;
+  if (I18n && typeof I18n.t === 'function') {
+    if (typeof I18n.hasKey !== 'function' || I18n.hasKey(key)) {
+      return I18n.t(key, params);
+    }
+  }
+  let text = fallback || key;
+  if (params && typeof text === 'string') {
+    text = text.replace(/\{(\w+)\}/g, (m, k) =>
+      Object.prototype.hasOwnProperty.call(params, k) && params[k] !== undefined && params[k] !== null
+        ? String(params[k])
+        : m
+    );
+  }
+  return text;
+}
+
 
 // Bug-2 修复：广播风暴防御——原子渲染锁，防止 onDataChange 快速连续触发时多个 render 并发执行
 let _isRendering = false;
@@ -113,12 +131,12 @@ const CoreServices = {
     sel.replaceChildren();
     const optAll = document.createElement('option');
     optAll.value = '';
-    optAll.textContent = '全部项目';
+    optAll.textContent = tr('common.allProjects', '全部项目');
     sel.appendChild(optAll);
     for (const t of roots) {
       const opt = document.createElement('option');
       opt.value = t.id;
-      opt.textContent = t.content || '(未命名)';
+      opt.textContent = t.content || `(${tr('common.unknown', '未命名')})`;
       if (t.id === cur) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -129,8 +147,8 @@ const CoreServices = {
     const addBtn = document.getElementById('addTaskBtn');
     if (!addBtn) return;
     // 顶栏 + 只唤起底栏；落点由 hint 说明
-    addBtn.textContent = '+ 添加';
-    addBtn.title = '聚焦底栏快速添加（详细备注请编辑任务）';
+    addBtn.textContent = tr('toolbar.addTask', '+ 添加');
+    addBtn.title = tr('toolbar.addTask', '聚焦底栏快速添加（详细备注请编辑任务）');
   },
 
   /**
@@ -182,14 +200,28 @@ const CoreServices = {
       document.body.classList.toggle('theme-dark', config.theme === 'dark');
       localStorage.setItem('theme', config.theme);
       const button = document.getElementById('themeToggleBtn');
-      if (button) button.textContent = config.theme === 'dark' ? '☀️ 浅色' : '🌙 深色';
+      if (button) button.textContent = config.theme === 'dark' ? `☀️ ${tr('toolbar.themeLight', '浅色')}` : `🌙 ${tr('toolbar.themeDark', '深色')}`;
     }
     this.refreshProjectScopeSelect();
     this.updateAddTaskBtnLabel();
   },
 
+  refreshThemeToggleBtn() {
+    const themeBtn = document.getElementById('themeToggleBtn');
+    if (!themeBtn) return;
+    const isDark = document.body.classList.contains('theme-dark');
+    themeBtn.textContent = isDark ? `☀️ ${tr('toolbar.themeLight', '浅色')}` : `🌙 ${tr('toolbar.themeDark', '深色')}`;
+    themeBtn.title = isDark ? tr('toolbar.themeLight', '切换浅色模式') : tr('toolbar.themeDark', '切换深色模式');
+  },
+
   async refreshConfig() {
-    this.applyConfig(await _api.config.get());
+    const cfg = await _api.config.get();
+    if (cfg && cfg.language !== undefined && window.ModuleApp.I18n && window.ModuleApp.I18n.getSetting() !== (cfg.language || 'auto')) {
+      window.ModuleApp.I18n.setLocale(cfg.language || 'auto');
+      this.updateViewHeader(window.ModuleApp.State.state.view);
+      this.refreshThemeToggleBtn();
+    }
+    this.applyConfig(cfg);
   },
 
   async refreshUndoUI() {
@@ -200,7 +232,9 @@ const CoreServices = {
     const lastLabel = list.length > 0 ? list[0].label : '';
     if (btn) {
       btn.disabled = !can;
-      btn.title = can ? `撤回: ${lastLabel} (Ctrl+Z)` : '没有可撤回的操作';
+      btn.title = can
+        ? `${tr('toolbar.undoWithLabel', '撤回: {action}', { action: lastLabel })} (Ctrl+Z)`
+        : tr('toast.undoEmpty', '没有可撤回的操作');
     }
     if (hint) hint.textContent = can ? `· ${lastLabel}` : '';
   },
@@ -208,24 +242,40 @@ const CoreServices = {
   async performUndo() {
     const btn = document.getElementById('undoBtn');
     if (this._undoPending) return;
-    if (btn && btn.disabled) { window.ModuleApp.Toast.show('没有可撤回的操作', 'info'); return; }
+    if (btn && btn.disabled) { window.ModuleApp.Toast.show(tr('toast.undoEmpty', '没有可撤回的操作'), 'info'); return; }
     this._undoPending = true;
     if (btn) btn.disabled = true;
     try {
     const res = await _api.undo.undo();
-    if (!res.ok) { window.ModuleApp.Toast.show(res.message || '撤回失败', 'error'); return; }
+    if (!res.ok) { window.ModuleApp.Toast.show(res.message || tr('toast.undoFailed', '撤回失败', { error: '' }), 'error'); return; }
     await this.refreshConfig();
     await this.loadTasks();
     await this.loadNotes();
     window.ModuleApp.TaskController.clearSelection();
     await this.render();
-    window.ModuleApp.Toast.show(`已撤回: ${res.label}（剩余 ${res.remaining} 步）`, 'success');
+    window.ModuleApp.Toast.show(tr('toast.undoSuccess', '已撤回: {action}', { action: res.label }), 'success');
     } catch (error) {
       showDataError(error);
     } finally {
       this._undoPending = false;
       try { await this.refreshUndoUI(); } catch (error) { showDataError(error); }
     }
+  },
+
+  updateViewHeader(view) {
+    const titles = {
+      hierarchy:   [tr('hierarchy.title', '层级视图'),    tr('hierarchy.dragHint', '拖拽排序（拖到下方可左右调层级） · ↑↓ 选中 · Enter 编辑 · Space 完成 · / 搜索 · n 底栏添加')],
+      deadline:    [tr('deadline.title', '截止日期'),     tr('deadline.title', '按截止日期排序 · ↑↓ 选中 · Enter 编辑 · Esc 关闭 · Space 完成 · n 底栏添加')],
+      gantt:       [tr('gantt.title', '甘特图'),         tr('gantt.title', '任务时间线视图')],
+      completed:   [tr('completed.title', '已完成项目'),  tr('completed.retentionHint', '超过保留天数的已完成项目可清理', { days: 180 })],
+      reports:     [tr('reports.title', '周报'),         tr('reports.title', '每周自动统计已完成任务')],
+      notes:       [tr('notes.title', '备忘录'),         tr('notes.title', '快速记录灵感与备忘')],
+    };
+
+    const titleEl = document.getElementById('viewTitle');
+    const hintEl  = document.getElementById('viewHint');
+    if (titleEl) titleEl.textContent = titles[view]?.[0] || '';
+    if (hintEl)  hintEl.textContent  = titles[view]?.[1] || '';
   },
 
   switchView(view) {
@@ -252,19 +302,7 @@ const CoreServices = {
       if (badge) badge.textContent = '';
     }
 
-    const titles = {
-      hierarchy:   ['层级视图',    '拖拽排序（拖到下方可左右调层级） · ↑↓ 选中 · Enter 编辑 · Space 完成 · / 搜索 · n 底栏添加'],
-      deadline:    ['截止日期',    '按截止日期排序 · ↑↓ 选中 · Enter 编辑 · Esc 关闭 · Space 完成 · n 底栏添加'],
-      gantt:       ['甘特图',      '任务时间线视图'],
-      completed:   ['已完成项目',  '超过保留天数的已完成项目可清理'],
-      reports:     ['周报',        '每周自动统计已完成任务'],
-      notes:       ['备忘录',      '快速记录灵感与备忘'],
-    };
-
-    const titleEl = document.getElementById('viewTitle');
-    const hintEl  = document.getElementById('viewHint');
-    if (titleEl) titleEl.textContent = titles[view]?.[0] || '';
-    if (hintEl)  hintEl.textContent  = titles[view]?.[1] || '';
+    this.updateViewHeader(view);
 
     const addBtn = document.getElementById('addTaskBtn');
     if (addBtn) {
@@ -340,10 +378,10 @@ window.ModuleApp.setProjectScope = CoreServices.setProjectScope.bind(CoreService
 window.ModuleApp.refreshUndoUI = CoreServices.refreshUndoUI.bind(CoreServices);
 
 function _formatBackupKindLabel(kind) {
-  if (kind === 'daily') return '每日';
-  if (kind === 'pre-import') return '导入前';
-  if (kind === 'pre-restore') return '恢复前';
-  return kind || '备份';
+  if (kind === 'daily') return tr('common.refresh', '每日');
+  if (kind === 'pre-import') return tr('common.import', '导入前');
+  if (kind === 'pre-restore') return tr('common.restore', '恢复前');
+  return kind || tr('toolbar.backup', '备份');
 }
 
 async function refreshBackupsList() {
@@ -353,14 +391,14 @@ async function refreshBackupsList() {
     listEl.replaceChildren();
     const hint = document.createElement('div');
     hint.className = 'data-hint';
-    hint.textContent = '当前运行模式不支持自动备份列表';
+    hint.textContent = tr('modal.backupEmpty', '当前运行模式不支持自动备份列表');
     listEl.appendChild(hint);
     return;
   }
   listEl.replaceChildren();
   const loading = document.createElement('div');
   loading.className = 'data-hint';
-  loading.textContent = '正在加载备份列表...';
+  loading.textContent = tr('common.loading', '正在加载备份列表...');
   listEl.appendChild(loading);
   try {
     const items = await _api.backups.list();
@@ -368,7 +406,7 @@ async function refreshBackupsList() {
     if (!Array.isArray(items) || items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'data-hint';
-      empty.textContent = '暂无自动备份';
+      empty.textContent = tr('modal.backupEmpty', '暂无自动备份');
       listEl.appendChild(empty);
       return;
     }
@@ -394,7 +432,7 @@ async function refreshBackupsList() {
 
       const sub = document.createElement('div');
       sub.className = 'backup-sub';
-      sub.textContent = `${b.taskCount ?? 0} 任务 · ${b.noteCount ?? 0} 便签 · ${b.reportCount ?? 0} 周报`;
+      sub.textContent = `${b.taskCount ?? 0} ${tr('nav.statsTotal', '任务')} · ${b.noteCount ?? 0} ${tr('nav.notes', '便签')} · ${b.reportCount ?? 0} ${tr('nav.reports', '周报')}`;
 
       meta.appendChild(titleRow);
       meta.appendChild(sub);
@@ -402,7 +440,7 @@ async function refreshBackupsList() {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn btn-sm';
-      btn.textContent = '恢复';
+      btn.textContent = tr('common.restore', '恢复');
       btn.dataset.backupId = b.id;
 
       row.appendChild(meta);
@@ -413,7 +451,7 @@ async function refreshBackupsList() {
     listEl.replaceChildren();
     const errEl = document.createElement('div');
     errEl.className = 'data-hint';
-    errEl.textContent = '加载备份失败: ' + (err?.message || err);
+    errEl.textContent = tr('toast.loadFailed', '加载备份失败: {error}', { error: err?.message || err });
     listEl.appendChild(errEl);
   }
 }
@@ -452,8 +490,8 @@ function bindEarlyDataUI() {
     const backupId = btn.dataset.backupId;
     if (!backupId) return;
     const ok = await window.ModuleApp.Modal.confirm({
-      title: '确认恢复自动备份',
-      message: `确定从备份「${backupId}」恢复数据吗？恢复前会自动保存当前有效数据或损坏文件诊断副本。`,
+      title: tr('modal.confirmTitle', '确认恢复自动备份'),
+      message: tr('modal.backupRestoreConfirm', `确定从备份「${backupId}」恢复数据吗？恢复前会自动保存当前有效数据或损坏文件诊断副本。`),
     });
     if (!ok) return;
     btn.disabled = true;
@@ -462,7 +500,7 @@ function bindEarlyDataUI() {
       const dataModal = document.getElementById('dataModal');
       if (dataModal) dataModal.hidden = true;
       if (!_initCompleted) {
-        window.ModuleApp.Toast?.show('已从备份恢复，正在重新加载界面...', 'success');
+        window.ModuleApp.Toast?.show(tr('modal.backupRestoreSuccess', '已从备份恢复，正在重新加载界面...'), 'success');
         window.location.reload();
         return;
       }
@@ -471,10 +509,9 @@ function bindEarlyDataUI() {
       await CoreServices.loadNotes();
       await safeRender();
       await CoreServices.refreshUndoUI();
-      const extra = res?.corruptBackupPath ? `（原损坏文件已保存至 ${res.corruptBackupPath}）` : '';
-      window.ModuleApp.Toast?.show(`已恢复 ${res?.taskCount ?? 0} 条任务${extra}`, 'success');
+      window.ModuleApp.Toast?.show(tr('modal.backupRestoreSuccess', `已恢复 ${res?.taskCount ?? 0} 条任务`), 'success');
     } catch (err) {
-      window.ModuleApp.Toast?.show('恢复备份失败: ' + (err?.message || err), 'error');
+      window.ModuleApp.Toast?.show(tr('toast.loadFailed', '恢复备份失败: {error}', { error: err?.message || err }), 'error');
     } finally {
       btn.disabled = false;
     }
@@ -482,20 +519,20 @@ function bindEarlyDataUI() {
 
   document.getElementById('exportJsonBtn')?.addEventListener('click', async () => {
     const result = await _api.data.export();
-    if (result.ok) window.ModuleApp.Toast.show(`已成功导出 ${result.tasks} 个项目`, 'success');
+    if (result.ok) window.ModuleApp.Toast.show(tr('modal.backupExportSuccess', `已成功导出 ${result.tasks} 个项目`), 'success');
   });
 
   document.getElementById('importJsonBtn')?.addEventListener('click', async () => {
     const fileResult = await _api.data.readFile();
     if (fileResult?.canceled) return;
-    if (!fileResult?.ok) return window.ModuleApp.Toast.show('读取文件失败', 'error');
+    if (!fileResult?.ok) return window.ModuleApp.Toast.show(tr('toast.loadFailed', '读取文件失败', { error: '' }), 'error');
     const choice = await window.ModuleApp.Modal.choose({
-      title: '确认导入方式',
-      message: `检测到 ${fileResult.taskCount} 个任务。请选择导入方式：`,
+      title: tr('modal.confirmTitle', '确认导入方式'),
+      message: tr('modal.backupImportConfirm', `检测到 ${fileResult.taskCount} 个任务。请选择导入方式：`),
       choices: [
-        { id: 'replace', label: '覆盖现有数据', primary: true },
-        { id: 'merge', label: '合并（按 id）' },
-        { id: 'cancel', label: '取消' },
+        { id: 'replace', label: tr('modal.importModeOverwrite', '覆盖现有数据'), primary: true },
+        { id: 'merge', label: tr('modal.importModeMerge', '合并（按 id）') },
+        { id: 'cancel', label: tr('common.cancel', '取消') },
       ]
     });
     if (!choice || choice === 'cancel') return;
@@ -511,8 +548,8 @@ function bindEarlyDataUI() {
       CoreServices.render();
       await CoreServices.refreshUndoUI();
       document.getElementById('dataModal').hidden = true;
-      window.ModuleApp.Toast.show('导入完成', 'success');
-    } catch(e) { window.ModuleApp.Toast.show('导入失败: ' + e.message, 'error'); }
+      window.ModuleApp.Toast.show(tr('modal.backupImportSuccess', '导入完成'), 'success');
+    } catch(e) { window.ModuleApp.Toast.show(tr('toast.loadFailed', '导入失败: {error}', { error: e.message }), 'error'); }
   });
 }
 
@@ -571,16 +608,20 @@ async function init() {
     document.body.classList.toggle('theme-dark', isDark);
     const themeBtn = document.getElementById('themeToggleBtn');
     if (themeBtn) {
-      themeBtn.textContent = isDark ? '☀️ 浅色' : '🌙 深色';
-      themeBtn.title = isDark ? '切换浅色模式' : '切换深色模式';
+      themeBtn.textContent = isDark ? `☀️ ${tr('toolbar.themeLight', '浅色')}` : `🌙 ${tr('toolbar.themeDark', '深色')}`;
+      themeBtn.title = isDark ? tr('toolbar.themeLight', '切换浅色模式') : tr('toolbar.themeDark', '切换深色模式');
     }
   }
 
   let bootTheme = localStorage.getItem('theme') || 'light';
+  let cfg0 = null;
   try {
-    const cfg0 = await _api.config.get();
+    cfg0 = await _api.config.get();
     if (cfg0 && (cfg0.theme === 'light' || cfg0.theme === 'dark')) bootTheme = cfg0.theme;
   } catch (_) {}
+  if (window.ModuleApp.I18n) {
+    window.ModuleApp.I18n.setLocale((cfg0 && cfg0.language) || 'auto');
+  }
   applyTheme(bootTheme);
   localStorage.setItem('theme', bootTheme);
 
@@ -593,6 +634,10 @@ async function init() {
 
   document.querySelectorAll('.nav-item')
     .forEach(n => n.addEventListener('click', () => CoreServices.switchView(n.dataset.view)));
+
+  document.getElementById('sidebarSettingsBtn')?.addEventListener('click', () => {
+    window.api?.app?.openSettings?.();
+  });
 
   // 顶栏 +：聚焦底栏快建（弹窗仅编辑详情）
   document.getElementById('addTaskBtn')?.addEventListener('click', () => {
@@ -620,7 +665,7 @@ async function init() {
     document.getElementById('autoPlanBtn')?.classList.toggle('active', ns);
     _api.config.update({ autoPlan: ns });
     window.ModuleApp.Toast.show(
-      ns ? '已开启：母任务时间跟随子任务' : '已关闭：母任务时间不再自动跟随',
+      ns ? tr('toolbar.autoPlanOn', '已开启：母任务时间跟随子任务') : tr('toolbar.autoPlanOff', '已关闭：母任务时间不再自动跟随'),
       'success'
     );
   });
@@ -654,9 +699,9 @@ async function init() {
   document.getElementById('cleanupBtn')?.addEventListener('click', async () => {
     let days = 180;
     try { const c = await _api.config.get(); days = c.taskRetentionDays || 180; } catch(_) {}
-    if (await window.ModuleApp.Modal.confirm({ title: '清理', message: `确定清理 ${days} 天前已完成的任务吗？` })) {
+    if (await window.ModuleApp.Modal.confirm({ title: tr('toolbar.cleanup', '清理'), message: tr('completed.cleanupConfirm', '确定清理 {days} 天前已完成的任务吗？', { days }) })) {
       const res = await _api.tasks.cleanup();
-      window.ModuleApp.Toast.show(`已清理 ${res.removed} 项`, 'success');
+      window.ModuleApp.Toast.show(tr('completed.cleanupSuccess', '已清理 {count} 项', { count: res.removed }), 'success');
       await CoreServices.loadTasks();
       CoreServices.render();
       CoreServices.refreshUndoUI();
@@ -703,7 +748,7 @@ async function init() {
       // 定时提醒是全局列表；若当前项目过滤会藏掉目标，先切回全部再定位
       if (scopeIds.length > 0 && PS && !PS.isTaskInScope(State.state.tasks, scopeIds, id)) {
         if (typeof window.ModuleApp.setProjectScope === 'function') {
-          await window.ModuleApp.setProjectScope([], { toast: '已切回全部项目以定位该任务' });
+          await window.ModuleApp.setProjectScope([], { toast: tr('common.allProjects', '已切回全部项目以定位该任务') });
         }
       }
       const Sc = window.ModuleApp.SearchController;
@@ -752,7 +797,7 @@ async function cleanupAndRefresh() {
 }
 
 function showDataError(error) {
-  window.ModuleApp.Toast?.show('数据操作失败: ' + (error?.message || error), 'error');
+  window.ModuleApp.Toast?.show(tr('toast.loadFailed', '数据操作失败: {error}', { error: error?.message || error }), 'error');
 }
 
 function startApp() {
@@ -763,14 +808,14 @@ function startApp() {
     const message = document.createElement('div');
     message.className = 'empty-state';
     message.setAttribute('role', 'alert');
-    message.textContent = '无法读取任务数据，原文件已保留。请修复文件或恢复备份后重启程序。\n' + (error?.message || error);
+    message.textContent = tr('toast.loadFailed', '无法读取任务数据，原文件已保留。请修复文件或恢复备份后重启程序。\n{error}', { error: error?.message || error });
     container.replaceChildren(message);
     if (typeof window !== 'undefined' && typeof container.appendChild === 'function') {
       const recoverBtn = document.createElement('button');
       recoverBtn.type = 'button';
       recoverBtn.className = 'btn btn-primary';
       recoverBtn.style.marginTop = '12px';
-      recoverBtn.textContent = '📦 从自动备份恢复';
+      recoverBtn.textContent = `📦 ${tr('common.restore', '从自动备份恢复')}`;
       recoverBtn.addEventListener('click', async () => {
         let dbPath = '';
         try { dbPath = await window.api?.debug?.dataPath?.(); } catch (_) {}
@@ -938,8 +983,15 @@ _api.onDataChange(async (data) => {
     return;
   }
   if (patch.action === 'CONFIG_UPDATED') {
+    if (patch.payload && patch.payload.language !== undefined && window.ModuleApp.I18n) {
+      window.ModuleApp.I18n.setLocale(patch.payload.language || 'auto');
+      CoreServices.updateViewHeader(window.ModuleApp.State.state.view);
+      CoreServices.refreshThemeToggleBtn();
+    }
     CoreServices.applyConfig(patch.payload);
-    if (Array.isArray(patch.payload?.projectScopeIds)) await safeRender();
+    CoreServices.refreshProjectScopeSelect();
+    await CoreServices.refreshUndoUI();
+    await safeRender();
     return;
   }
   switch (patch.action) {
