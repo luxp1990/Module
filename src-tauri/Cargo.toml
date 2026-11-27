@@ -32,5 +32,8 @@ tauri-plugin-global-shortcut = "2"
 rust_xlsxwriter = "0.104.0"
 reqwest = { version = "0.13.5", features = ["json"] }
 
+[target.'cfg(not(windows))'.dependencies]
+keyring = { version = "3.6", features = ["apple-native", "sync-secret-service", "crypto-rust"] }
+
 [dev-dependencies]
 zip = { version = "9.8.2", default-features = false, features = ["deflate"] }
