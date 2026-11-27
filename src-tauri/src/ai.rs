@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use reqwest::Client;
@@ -10,6 +11,7 @@ use crate::store::DataStore;
 
 pub const AI_SECRETS_FILENAME: &str = "ai-secrets.json";
 const HTTP_TIMEOUT_SECS: u64 = 45;
+pub const MAX_AI_PROMPT_CHARS: usize = 60_000;
 
 const TASK_JSON_SCHEMA_LOCK: &str = r#"
 [NON-EDITABLE OUTPUT SCHEMA]
@@ -265,6 +267,14 @@ pub fn resolve_secrets_path() -> PathBuf {
 
 const DPAPI_PREFIX: &str = "dpapi:";
 const FALLBACK_ENC_PREFIX: &str = "b64:";
+#[cfg(not(windows))]
+const KEYRING_PREFIX: &str = "keyring:";
+#[cfg(not(windows))]
+const KEYRING_SERVICE: &str = "com.module.taskmanager";
+#[cfg(all(not(windows), not(test)))]
+const KEYRING_ACCOUNT: &str = "ai-api-key";
+#[cfg(all(not(windows), test))]
+const KEYRING_ACCOUNT: &str = "ai-api-key-test";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -505,11 +515,50 @@ fn protect_api_key(plaintext: &str) -> Result<String, String> {
 }
 
 #[cfg(not(windows))]
+fn store_api_key_in_keyring(plaintext: &str) -> Result<String, String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .map_err(|e| format!("Failed to access OS credential store: {e}"))?;
+    entry
+        .set_password(plaintext)
+        .map_err(|e| format!("Failed to store API key in OS credential store: {e}"))?;
+    Ok(format!("{KEYRING_PREFIX}{KEYRING_ACCOUNT}"))
+}
+
+#[cfg(not(windows))]
+fn load_api_key_from_keyring(account: &str) -> Result<String, String> {
+    let target_account = if account.trim().is_empty() {
+        KEYRING_ACCOUNT
+    } else {
+        account.trim()
+    };
+    let entry = keyring::Entry::new(KEYRING_SERVICE, target_account)
+        .map_err(|e| format!("Failed to access OS credential store: {e}"))?;
+    match entry.get_password() {
+        Ok(secret) => Ok(secret),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(e) => Err(format!("Failed to read API key from OS credential store: {e}")),
+    }
+}
+
+#[cfg(not(windows))]
+fn delete_api_key_from_keyring() {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT) {
+        let _ = entry.delete_credential();
+    }
+}
+
+#[cfg(not(windows))]
 fn protect_api_key(plaintext: &str) -> Result<String, String> {
     if plaintext.is_empty() {
         return Ok(String::new());
     }
-    Ok(format!("{FALLBACK_ENC_PREFIX}{}", base64_encode(plaintext.as_bytes())))
+    match store_api_key_in_keyring(plaintext) {
+        Ok(keyring_ref) => Ok(keyring_ref),
+        Err(err) => {
+            log::warn!("OS credential store unavailable, falling back to b64 storage: {err}");
+            Ok(format!("{FALLBACK_ENC_PREFIX}{}", base64_encode(plaintext.as_bytes())))
+        }
+    }
 }
 
 fn unprotect_api_key(encoded: &str) -> Result<String, String> {
@@ -531,6 +580,10 @@ fn unprotect_api_key(encoded: &str) -> Result<String, String> {
             return Err("DPAPI encrypted key cannot be decrypted on non-Windows platform".to_string());
         }
     }
+    #[cfg(not(windows))]
+    if let Some(account) = trimmed.strip_prefix(KEYRING_PREFIX) {
+        return load_api_key_from_keyring(account);
+    }
     if let Some(payload) = trimmed.strip_prefix(FALLBACK_ENC_PREFIX) {
         let bytes = base64_decode(payload)?;
         return String::from_utf8(bytes)
@@ -539,52 +592,12 @@ fn unprotect_api_key(encoded: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
-pub fn load_ai_config(path: &Path) -> Result<AiConfig, String> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(AiConfig::default()),
-        Err(e) => return Err(format!("Failed to read AI config ({}): {e}", path.display())),
-    };
-    let disk: AiSecretsDisk = serde_json::from_slice(&bytes)
-        .map_err(|e| format!("Invalid AI config JSON ({}): {e}", path.display()))?;
-
-    let api_key = if !disk.api_key_enc.trim().is_empty() {
-        unprotect_api_key(&disk.api_key_enc)?
-    } else if !disk.api_key.trim().is_empty() {
-        disk.api_key.trim().to_string()
-    } else {
-        String::new()
-    };
-
-    Ok(AiConfig {
-        provider: disk.provider,
-        api_key,
-        base_url: disk.base_url,
-        model: disk.model,
-        prompts: disk.prompts,
-    })
-}
-
-pub fn save_ai_config(path: &Path, config: &AiConfig) -> Result<(), String> {
+fn write_ai_secrets_disk(path: &Path, disk: &AiSecretsDisk) -> Result<(), String> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create AI config directory ({}): {e}", parent.display()))?;
     }
-    let trimmed_key = config.api_key.trim();
-    let api_key_enc = if trimmed_key.is_empty() {
-        String::new()
-    } else {
-        protect_api_key(trimmed_key)?
-    };
-    let disk = AiSecretsDisk {
-        provider: config.provider,
-        api_key: String::new(),
-        api_key_enc,
-        base_url: config.base_url.clone(),
-        model: config.model.clone(),
-        prompts: config.prompts.clone(),
-    };
-    let json = serde_json::to_string_pretty(&disk)
+    let json = serde_json::to_string_pretty(disk)
         .map_err(|e| format!("Failed to serialize AI config: {e}"))?;
     let file_name = path
         .file_name()
@@ -598,6 +611,65 @@ pub fn save_ai_config(path: &Path, config: &AiConfig) -> Result<(), String> {
         return Err(format!("Failed to replace AI config ({}): {e}", path.display()));
     }
     Ok(())
+}
+
+pub fn load_ai_config(path: &Path) -> Result<AiConfig, String> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(AiConfig::default()),
+        Err(e) => return Err(format!("Failed to read AI config ({}): {e}", path.display())),
+    };
+    let mut disk: AiSecretsDisk = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Invalid AI config JSON ({}): {e}", path.display()))?;
+
+    let enc_trimmed = disk.api_key_enc.trim();
+    let legacy_trimmed = disk.api_key.trim();
+    let api_key = if !enc_trimmed.is_empty() {
+        unprotect_api_key(enc_trimmed)?
+    } else if !legacy_trimmed.is_empty() {
+        legacy_trimmed.to_string()
+    } else {
+        String::new()
+    };
+
+    #[cfg(not(windows))]
+    if !api_key.is_empty() && !enc_trimmed.starts_with(KEYRING_PREFIX) {
+        if let Ok(keyring_ref) = store_api_key_in_keyring(&api_key) {
+            disk.api_key = String::new();
+            disk.api_key_enc = keyring_ref;
+            if let Err(err) = write_ai_secrets_disk(path, &disk) {
+                log::warn!("Failed to persist migrated keyring reference to {}: {err}", path.display());
+            }
+        }
+    }
+
+    Ok(AiConfig {
+        provider: disk.provider,
+        api_key,
+        base_url: disk.base_url,
+        model: disk.model,
+        prompts: disk.prompts,
+    })
+}
+
+pub fn save_ai_config(path: &Path, config: &AiConfig) -> Result<(), String> {
+    let trimmed_key = config.api_key.trim();
+    let api_key_enc = if trimmed_key.is_empty() {
+        #[cfg(not(windows))]
+        delete_api_key_from_keyring();
+        String::new()
+    } else {
+        protect_api_key(trimmed_key)?
+    };
+    let disk = AiSecretsDisk {
+        provider: config.provider,
+        api_key: String::new(),
+        api_key_enc,
+        base_url: config.base_url.clone(),
+        model: config.model.clone(),
+        prompts: config.prompts.clone(),
+    };
+    write_ai_secrets_disk(path, &disk)
 }
 
 pub fn build_weekly_report_prompt(
@@ -729,12 +801,29 @@ fn sanitize_tasks(items: Vec<GeneratedTaskItem>) -> Vec<GeneratedTaskItem> {
         .collect()
 }
 
-fn build_http_client() -> Result<Client, String> {
-    Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(HTTP_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {e}"))
+static HTTP_CLIENT: OnceLock<Result<Client, String>> = OnceLock::new();
+
+fn shared_http_client() -> Result<&'static Client, String> {
+    HTTP_CLIENT
+        .get_or_init(|| {
+            Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(Duration::from_secs(HTTP_TIMEOUT_SECS))
+                .build()
+                .map_err(|e| format!("Failed to build HTTP client: {e}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn validate_prompt_size(system_prompt: &str, user_prompt: &str) -> Result<(), String> {
+    let total_chars = system_prompt.chars().count() + user_prompt.chars().count();
+    if total_chars > MAX_AI_PROMPT_CHARS {
+        return Err(format!(
+            "ERR_INPUT_TOO_LARGE ({total_chars} chars > {MAX_AI_PROMPT_CHARS} max)"
+        ));
+    }
+    Ok(())
 }
 
 fn sanitize_error_message(msg: &str, api_key: &str) -> String {
@@ -805,7 +894,7 @@ async fn call_llm(
     user_prompt: &str,
 ) -> Result<String, String> {
     let (api_key, base_url) = require_api_key_and_base_url(config)?;
-    let client = build_http_client()?;
+    let client = shared_http_client()?;
     let model = config.effective_model();
     validate_model_name(config.provider, &model)?;
 
@@ -937,7 +1026,7 @@ async fn call_llm(
 
 pub async fn list_models(config: &AiConfig) -> Result<Vec<String>, String> {
     let (api_key, base_url) = require_api_key_and_base_url(config)?;
-    let client = build_http_client()?;
+    let client = shared_http_client()?;
     let url = format!("{base_url}/models");
 
     let mut req = client.get(&url);
@@ -1068,12 +1157,28 @@ pub async fn test_connection(config: &AiConfig) -> Result<String, String> {
     .await
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BreakdownResult {
+    pub items: Vec<GeneratedTaskItem>,
+    pub total_before_cap: usize,
+    pub dropped_count: usize,
+}
+
+fn count_generated_tasks(items: &[GeneratedTaskItem]) -> usize {
+    items
+        .iter()
+        .map(|item| 1 + count_generated_tasks(&item.children))
+        .sum()
+}
+
 pub async fn generate_weekly_report(
     config: &AiConfig,
     report_text: &str,
     language: &str,
 ) -> Result<String, String> {
     let (system_prompt, user_prompt) = build_weekly_report_prompt(config, report_text, language);
+    validate_prompt_size(&system_prompt, &user_prompt)?;
     call_llm(config, &system_prompt, &user_prompt).await
 }
 
@@ -1085,7 +1190,7 @@ pub async fn breakdown_task(
     max_subtasks_depth: usize,
     max_tasks: usize,
     language: &str,
-) -> Result<Vec<GeneratedTaskItem>, String> {
+) -> Result<BreakdownResult, String> {
     let limit = max_tasks.clamp(1, 20);
     let (system_prompt, mut user_prompt) = build_task_breakdown_prompt(
         config,
@@ -1098,11 +1203,19 @@ pub async fn breakdown_task(
     user_prompt.push_str(&format!(
         "\nMaximum total subtasks (strictly <= {limit}, or 0 / [] if no breakdown is meaningful): {limit}"
     ));
+    validate_prompt_size(&system_prompt, &user_prompt)?;
     let raw = call_llm(config, &system_prompt, &user_prompt).await?;
     let mut items = parse_generated_tasks(&raw)?;
     unwrap_and_dedup_parent(&mut items, task_content);
+    let total_before_cap = count_generated_tasks(&items);
     cap_generated_tasks(&mut items, limit);
-    Ok(items)
+    let total_after_cap = count_generated_tasks(&items);
+    let dropped_count = total_before_cap.saturating_sub(total_after_cap);
+    Ok(BreakdownResult {
+        items,
+        total_before_cap,
+        dropped_count,
+    })
 }
 
 fn unwrap_and_dedup_parent(items: &mut Vec<GeneratedTaskItem>, task_content: &str) {
@@ -1147,6 +1260,7 @@ pub async fn notes_to_tasks(
     language: &str,
 ) -> Result<Vec<GeneratedTaskItem>, String> {
     let (system_prompt, user_prompt) = build_notes_to_tasks_prompt(config, note_content, language);
+    validate_prompt_size(&system_prompt, &user_prompt)?;
     let raw = call_llm(config, &system_prompt, &user_prompt).await?;
     parse_generated_tasks(&raw)
 }
@@ -1537,8 +1651,73 @@ Notes:
                 3,
                 "zh-CN",
             ).await.expect("breakdown_task");
-            println!("[5] breakdown_task OK ({} subtasks): {:?}", bd.len(), bd.iter().map(|t| &t.content).collect::<Vec<_>>());
-            assert!(!bd.is_empty());
+            println!(
+                "[5] breakdown_task OK ({} subtasks, dropped {}): {:?}",
+                bd.items.len(),
+                bd.dropped_count,
+                bd.items.iter().map(|t| &t.content).collect::<Vec<_>>()
+            );
+            assert!(!bd.items.is_empty());
         });
+    }
+
+    #[test]
+    fn b64_secrets_load_backward_compatible() {
+        let dir = std::env::temp_dir().join(format!("module-ai-b64-compat-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let secrets_path = dir.join(AI_SECRETS_FILENAME);
+        let secret = "sk-legacy-b64-compat-1234";
+        let b64_enc = format!("{FALLBACK_ENC_PREFIX}{}", base64_encode(secret.as_bytes()));
+        let json = serde_json::json!({
+            "provider": "openai",
+            "apiKeyEnc": b64_enc,
+            "baseUrl": "",
+            "model": ""
+        });
+        fs::write(&secrets_path, serde_json::to_string(&json).unwrap()).expect("write b64 json");
+
+        let loaded = load_ai_config(&secrets_path).expect("load b64 config");
+        assert_eq!(loaded.api_key, secret);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prompt_size_guard_rejects_oversized_input() {
+        let ok_res = validate_prompt_size("sys", "user");
+        assert!(ok_res.is_ok());
+
+        let oversized = "x".repeat(MAX_AI_PROMPT_CHARS + 1);
+        let err = validate_prompt_size("sys", &oversized).unwrap_err();
+        assert!(err.starts_with("ERR_INPUT_TOO_LARGE"), "got: {err}");
+    }
+
+    #[test]
+    fn breakdown_cap_tracks_dropped_count_accurately() {
+        let make_item = |name: &str| GeneratedTaskItem {
+            content: name.to_string(),
+            priority: None,
+            start_date: None,
+            deadline: None,
+            children: Vec::new(),
+        };
+
+        let mut exact = vec![make_item("a"), make_item("b"), make_item("c")];
+        let before_exact = count_generated_tasks(&exact);
+        cap_generated_tasks(&mut exact, 3);
+        let dropped_exact = before_exact.saturating_sub(count_generated_tasks(&exact));
+        assert_eq!(dropped_exact, 0);
+
+        let mut over = vec![
+            make_item("a"),
+            make_item("b"),
+            make_item("c"),
+            make_item("d"),
+            make_item("e"),
+        ];
+        let before_over = count_generated_tasks(&over);
+        cap_generated_tasks(&mut over, 3);
+        let dropped_over = before_over.saturating_sub(count_generated_tasks(&over));
+        assert_eq!(dropped_over, 2);
     }
 }

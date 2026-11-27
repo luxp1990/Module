@@ -998,7 +998,7 @@ pub async fn ai_breakdown_task(
     max_subtasks_depth: Option<usize>,
     max_tasks: Option<usize>,
     language: Option<String>,
-) -> Result<Vec<crate::ai::GeneratedTaskItem>, String> {
+) -> Result<crate::ai::BreakdownResult, String> {
     let (config_lang, resolved_content, resolved_notes) = {
         let mut store = state.lock().unwrap();
         store.refresh_from_disk()?;

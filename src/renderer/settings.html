@@ -573,6 +573,14 @@
         'Please enter an API Key first (optional for Ollama / Custom)'
       );
     }
+    if (raw.includes('ERR_INPUT_TOO_LARGE')) {
+      return tr(
+        'settings.aiErrInputTooLarge',
+        null,
+        '输入内容过长，超出单次处理上限，请缩小范围后再试',
+        'Input content is too large for a single request; please narrow the scope and try again'
+      );
+    }
     if (/\b(401|403)\b/.test(lower) || lower.includes('unauthorized') || lower.includes('forbidden') || lower.includes('invalid api key')) {
       return tr(
         'settings.aiErrAuth',

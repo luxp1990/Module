@@ -487,6 +487,8 @@
             message: _t('ai.apiKeyMissingConfirm', null, '尚未配置 AI API Key，是否立即打开设置进行配置？', 'AI API Key is not configured. Open Settings now?'),
           });
           if (ok) window.api?.app?.openSettings?.();
+        } else if (msg.includes('ERR_INPUT_TOO_LARGE')) {
+          window.ModuleApp.Toast?.show(_t('ai.inputTooLargeNote', null, '笔记内容过长，请分段或精简后再试', 'Note content is too large; please split or shorten it and try again'), 'error');
         } else {
           window.ModuleApp.Toast?.show(_t('notes.aiExtractFailed', { error: err?.message || err }, 'AI 提取任务失败: ' + (err?.message || err), 'AI task extraction failed: ' + (err?.message || err)), 'error');
         }
