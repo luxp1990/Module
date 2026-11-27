@@ -1,6 +1,6 @@
 [package]
 name = "module"
-version = "2.1.8"
+version = "2.2.0"
 description = "Module - 个人任务管理系统"
 authors = ["Module Team"]
 license = ""

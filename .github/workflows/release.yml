@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check tag matches package version (tag pushes only)
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $pkg = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          if ($pkg -ne $tag) { throw "Tag v$tag does not match package.json version $pkg" }
+          Write-Host "Version OK: $pkg"
+
+      - name: Build Tauri app (NSIS installer)
+        run: npm run tauri:build
+
+      - name: Package dist assets
+        run: node scripts/package-dist.js
+
+      - name: Upload artifacts (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-dist
+          path: |
+            dist/Module Setup *.exe
+            dist/v*/Module-*-win.zip
+
+      - name: Publish GitHub Release (tag pushes only)
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = (Get-Content package.json | ConvertFrom-Json).version
+          $notes = "Module v$ver - Tauri desktop task manager (nested tasks / deadlines / drag reorder / desktop widget / Gantt chart and weekly reports). This release adds the built-in BYO-API AI assistant and zh-CN/en-US bilingual UI, plus the AI-module fixes verified on Windows (cargo test 54 passed)."
+          gh release create "v$ver" --title "Module v$ver" --notes $notes "dist/Module Setup $ver.exe" "dist/v$ver/Module-$ver-win.zip"
